@@ -97,13 +97,14 @@ source $ZSH/oh-my-zsh.sh
 # For a full list of active aliases, run `alias`.
 #
 # Example aliases
-alias zconf="vi ~/.zshrc"
-alias ohmyzsh="vi ~/.oh-my-zsh"
+alias zconf="vim ~/.zshrc"
+alias ohmyzsh="vim ~/.oh-my-zsh"
 alias zsrc="source ~/.zshrc"
 alias ls="exa"
-# alias vim="nvim"
+alias vim="nvim"
 alias cl="clear"
 alias lt="ls -T"
+alias tcp="tmux show-buffer | xclip -selection clipboard"
 
 # gopath
 export PATH="/usr/local/go/bin:$PATH"
