@@ -131,6 +131,7 @@ alias vim="nvim"
 alias cl="clear"
 alias lt="ls -T"
 alias tcp="tmux show-buffer | xclip -selection clipboard"
+alias awk="gawk"
 
 # gopath
 export PATH="/usr/local/go/bin:$PATH"
