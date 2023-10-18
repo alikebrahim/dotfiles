@@ -108,11 +108,11 @@ bindkey '^[[Z' undo                                             # Shift+tab undo
 # export LANG=en_US.UTF-8
 
 # Preferred editor for local and remote sessions
-# if [[ -n $SSH_CONNECTION ]]; then
-#   export EDITOR='vim'
-# else
-#   export EDITOR='nvim'
-# fi
+ if [[ -n $SSH_CONNECTION ]]; then
+   export EDITOR='vim'
+ else
+   export EDITOR='nvim'
+ fi
 
 # Compilation flags
 # export ARCHFLAGS="-arch x86_64"
@@ -126,6 +126,7 @@ bindkey '^[[Z' undo                                             # Shift+tab undo
 alias zconf="vim ~/.zshrc"
 alias ohmyzsh="vim ~/.oh-my-zsh"
 alias zsrc="source ~/.zshrc"
+alias tconf="vim ~/.tmux.conf"
 alias ls="exa"
 alias vim="nvim"
 alias cl="clear"
@@ -136,21 +137,11 @@ alias awk="gawk"
 # gopath
 export PATH="/usr/local/go/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/alikebrahim/anaconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/alikebrahim/anaconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/alikebrahim/anaconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/alikebrahim/anaconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
-
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+# ZSH_TMUX_AUTOSTART
+export ZSH_TMUX_AUTOSTART=true
 
 source /home/alikebrahim/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
