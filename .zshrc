@@ -133,6 +133,8 @@ alias cl="clear"
 alias lt="ls -T"
 alias tcp="tmux show-buffer | xclip -selection clipboard"
 alias awk="gawk"
+alias mtpc="aft-mtp-cli"
+alias mtpm="aft-mtp-mount"
 
 # gopath
 export PATH="/usr/local/go/bin:$PATH"
