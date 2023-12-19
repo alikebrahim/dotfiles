@@ -127,7 +127,7 @@ alias zconf="vim ~/.zshrc"
 alias ohmyzsh="vim ~/.oh-my-zsh"
 alias zsrc="source ~/.zshrc"
 alias tconf="vim ~/.tmux.conf"
-alias ls="exa"
+alias ls="eza"
 alias vim="nvim"
 alias cl="clear"
 alias lt="ls -T"
@@ -145,5 +145,8 @@ command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 # ZSH_TMUX_AUTOSTART
 export ZSH_TMUX_AUTOSTART=true
+
+# java environment
+export JAVA_HOME="/usr/bin/java"
 
 source /home/alikebrahim/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
