@@ -156,3 +156,7 @@ source $HOME/.config/zsh/fzf-git.sh/fzf-git.sh #fzf git integration
 export BAT_THEME="1337"
 # zoxide
 eval "$(zoxide init zsh)"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
