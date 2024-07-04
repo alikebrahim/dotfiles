@@ -103,7 +103,7 @@ git clone git@github.com:alikebrahim/books.git ~/Documents/books
 # Confg
 cd ~/.dotfiles/
 stow zsh nvim fzf tmux wezterm obsidian atuin
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended --keep-zshrc
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
 
 mkdir -p ~/.local/share/fonts/{JuliaMono,JetBrains}
