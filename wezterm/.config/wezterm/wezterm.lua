@@ -9,7 +9,7 @@ end
 -- General: Appearance and Behavior
 -- ]]
 -- Appearance: Font
-config.font = wezterm.font("JuliaMono Nerd Font Mono", { weight = "Regular", italic = false })
+config.font = wezterm.font("JuliaMono", { weight = "Regular", italic = false })
 config.font_size = 12
 -- Appearance: Window
 config.window_decorations = "RESIZE"
