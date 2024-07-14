@@ -338,7 +338,10 @@ require('lazy').setup({
         -- But for many setups, the LSP (`tsserver`) will work just fine
         tsserver = {},
         --
-
+        ansiblels = {
+          -- configure filetype
+          vim.filetype.add { pattern = { ['.*%.ansible%..*'] = 'yaml.ansible' } }, -- this will match playboook.ansible.yaml
+        },
         lua_ls = {
           -- cmd = {...},
           -- filetypes = { ...},
