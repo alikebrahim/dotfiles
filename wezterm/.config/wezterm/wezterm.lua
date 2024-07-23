@@ -22,8 +22,8 @@ config.window_padding = {
 	bottom = 7,
 }
 -- Appearance: ColorScheme
-config.color_scheme = "Kolorit"
--- config.color_scheme = "Later This Evening"
+-- config.color_scheme = "Kolorit"
+config.color_scheme = "Later This Evening"
 -- config.color_scheme = "Laserwave (Gogh)"
 -- Appearance: Panes
 config.inactive_pane_hsb = {
