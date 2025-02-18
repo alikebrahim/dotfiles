@@ -11,31 +11,35 @@ end
 -- Appearance: Font
 config.font = wezterm.font("JetBrains Mono", { weight = "Regular", italic = false })
 config.font_size = 12
+
 -- Appearance: Window
 config.window_decorations = "RESIZE"
 config.window_background_opacity = 0.97
 config.window_close_confirmation = "NeverPrompt"
 config.window_padding = {
-	left = 3,
-	right = 10,
-	top = 7,
-	bottom = 7,
-}
--- Appearance: ColorScheme
+	left = 2,
+	right = 2,
+	top = 0,
+	bottom = 26,
+} -- Appearance: ColorScheme
 -- config.color_scheme = "Kolorit"
 config.color_scheme = "Later This Evening"
 -- config.color_scheme = "Laserwave (Gogh)"
+
 -- Appearance: Panes
 config.inactive_pane_hsb = {
 	saturation = 0.25,
 	brightness = 0.5,
 }
+
 -- Appearance: Tab Bar
-config.use_fancy_tab_bar = false
+config.use_fancy_tab_bar = true
 config.status_update_interval = 1000
 config.tab_bar_at_bottom = false
 config.tab_max_width = 25
-config.show_tab_index_in_tab_bar = false
+config.show_tab_index_in_tab_bar = true
+-- config.hide_tab_bar_if_only_one_tab = true
+
 -- Behavior
 config.scrollback_lines = 100000
 config.default_workspace = "home"
@@ -52,7 +56,6 @@ config.keys = {
 	{ key = "Enter", mods = "ALT", action = act.ToggleFullScreen }, -- toggle fullscreen
 	{ key = "F12", mods = "NONE", action = act.ShowDebugOverlay }, -- show debugger (I have no idea why I would need that!)
 	-- { key = "C", mods = "LEADER", action = act.ActivateCommandPalette }, -- show command palette
-	-- { key = "a", mods = "LEADER", action = act.SendKey({ key = "a", mods = "CTRL" }) }, -- send c-a when pressing c-a twice
 	---- copy mode
 	{ key = "[", mods = "LEADER", action = act.ActivateCopyMode },
 	{ key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") },
@@ -70,13 +73,27 @@ config.keys = {
 	{ key = "s", mods = "LEADER", action = act.ActivateKeyTable({ name = "resize_pane", one_shot = false }) },
 	-- tab CTRL
 	{ key = "n", mods = "CTRL|SHIFT", action = act.SpawnTab("CurrentPaneDomain") },
-	{ key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(0) },
-	{ key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(2) },
+	{ key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(-1) },
+	{ key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(1) },
 	{ key = "t", mods = "CTRL|SHIFT", action = act.ShowTabNavigator },
 	{ key = "m", mods = "CTRL|SHIFT", action = act.ActivateKeyTable({ name = "move_tab", one_shot = false }) },
 	-- Workspaces CTRL
 	{ key = "w", mods = "LEADER", action = act.ShowLauncherArgs({ flags = "FUZZY|WORKSPACES" }) },
+	-- others
+	{
+		key = "R",
+		mods = "CTRL|SHIFT",
+		action = act.PromptInputLine({
+			description = "Enter new tab name",
+			action = wezterm.action_callback(function(window, _, line)
+				if line then
+					window:active_tab():set_title(line)
+				end
+			end),
+		}),
+	},
 }
+
 -- navigate tabe with tab index
 for i = 2, 9 do
 	table.insert(config.keys, {

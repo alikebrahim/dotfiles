@@ -84,7 +84,7 @@ alias lt="eza --tree"
 alias awk="gawk"
 alias lg="lazygit"
 alias cat="bat"
-# alias cd="z"
+alias cd="z"
 
 # Shell integrations
 eval "$(fzf --zsh)"
