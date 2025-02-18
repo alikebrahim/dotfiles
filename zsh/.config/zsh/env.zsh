@@ -18,3 +18,7 @@ export PATH="/opt/dart-sass:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+
+
+# zig
+export PATH="$HOME/.local/bin/zig-linux-x86_64-0.13.0/:$PATH"

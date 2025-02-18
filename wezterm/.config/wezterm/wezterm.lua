@@ -22,9 +22,13 @@ config.window_padding = {
 	bottom = 7,
 }
 -- Appearance: ColorScheme
+-- config.color_scheme = "Later This Evening"
 -- config.color_scheme = "Kolorit"
-config.color_scheme = "Later This Evening"
--- config.color_scheme = "Laserwave (Gogh)"
+config.color_scheme = "Laserwave (Gogh)"
+-- config.color_scheme = "Tango Dark"
+-- config.color_scheme = "Solarized Dark"
+-- config.color_scheme = "Solarized Light"
+-- config.color_scheme = "Pastel Dark"
 -- Appearance: Panes
 config.inactive_pane_hsb = {
 	saturation = 0.25,
@@ -70,8 +74,8 @@ config.keys = {
 	{ key = "s", mods = "LEADER", action = act.ActivateKeyTable({ name = "resize_pane", one_shot = false }) },
 	-- tab CTRL
 	{ key = "n", mods = "CTRL|SHIFT", action = act.SpawnTab("CurrentPaneDomain") },
-	{ key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(0) },
-	{ key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(2) },
+	{ key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(-1) },
+	{ key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(1) },
 	{ key = "t", mods = "CTRL|SHIFT", action = act.ShowTabNavigator },
 	{ key = "m", mods = "CTRL|SHIFT", action = act.ActivateKeyTable({ name = "move_tab", one_shot = false }) },
 	-- Workspaces CTRL
