@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Postman
+Exec=/home/alikebrahim/.local/bin/Postman/Postman %u 
+Terminal=false
+Type=Application
+Icon=/home/alikebrahim/.local/share/icons/postman-icon.png
+StartupWMClass=postman
+Comment=Postman
+Categories=Office;
+# MimeType=text/html;x-scheme-handler/postman;

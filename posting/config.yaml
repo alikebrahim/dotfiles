@@ -1,0 +1,5 @@
+theme: monokai
+heading:
+  visible: false
+  # show_host: false
+editor: nvim
