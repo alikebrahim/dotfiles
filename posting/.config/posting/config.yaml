@@ -1,5 +1,11 @@
 theme: monokai
 heading:
-  visible: false
-  # show_host: false
+  visible: true
+  show_host: true
 editor: nvim
+command_height: 10
+follow_redirects: true
+sidebar_width: 30
+copy_timeout: 3
+auto_strip_newlines: true
+exit_copy_clear: true
