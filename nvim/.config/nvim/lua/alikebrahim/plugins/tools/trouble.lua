@@ -1,6 +1,9 @@
+-- Trouble for better error, warning, and info display
 return {
   'folke/trouble.nvim',
-  dependencies = { 'nvim-tree/nvim-web-devicons' },
+  dependencies = {
+    'nvim-tree/nvim-web-devicons',
+  },
   opts = {
     position = 'bottom', -- position of the list can be: bottom, top, left, right
     height = 10, -- height of the trouble list when position is top or bottom
@@ -8,8 +11,8 @@ return {
     icons = true, -- use devicons for filenames
     mode = 'workspace_diagnostics', -- "workspace_diagnostics", "document_diagnostics", "quickfix", "lsp_references", "loclist"
     severity = nil, -- nil (ALL) or vim.diagnostic.severity.ERROR | WARN | INFO | HINT
-    fold_open = '', -- icon used for open folds
-    fold_closed = '', -- icon used for closed folds
+    fold_open = '', -- icon used for open folds
+    fold_closed = '', -- icon used for closed folds
     group = true, -- group results by file
     padding = true, -- add an extra new line on top of the list
     cycle_results = true, -- cycle item list when reaching beginning or end of list
@@ -48,12 +51,39 @@ return {
     include_declaration = { 'lsp_references', 'lsp_implementations', 'lsp_definitions' }, -- for the given modes, include the declaration of the current symbol in the results
     signs = {
       -- icons / text used for a diagnostic
-      error = '',
-      warning = '',
-      hint = '',
-      information = '',
-      other = '',
+      error = '',
+      warning = '',
+      hint = '',
+      information = '',
+      other = '',
     },
+    sort_keys = { -- sort by labels by default
+      'severity',
+      'directory',
+      'category',
+    }, -- sort order can be a list of string keys or a function, see :help trouble.options.sort_keys
     use_diagnostic_signs = false, -- enabling this will use the signs defined in your lsp client
   },
+  config = function(_, opts)
+    require('trouble').setup(opts)
+    -- Keymaps
+    vim.keymap.set('n', '<leader>xx', function()
+      require('trouble').toggle()
+    end, { desc = 'Toggle Trouble' })
+    vim.keymap.set('n', '<leader>xw', function()
+      require('trouble').toggle 'workspace_diagnostics'
+    end, { desc = 'Trouble Workspace Diagnostics' })
+    vim.keymap.set('n', '<leader>xd', function()
+      require('trouble').toggle 'document_diagnostics'
+    end, { desc = 'Trouble Document Diagnostics' })
+    vim.keymap.set('n', '<leader>xq', function()
+      require('trouble').toggle 'quickfix'
+    end, { desc = 'Trouble Quickfix' })
+    vim.keymap.set('n', '<leader>xl', function()
+      require('trouble').toggle 'loclist'
+    end, { desc = 'Trouble Location List' })
+    vim.keymap.set('n', 'gR', function()
+      require('trouble').toggle 'lsp_references'
+    end, { desc = 'Trouble LSP References' })
+  end,
 }

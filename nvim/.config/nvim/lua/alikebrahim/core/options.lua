@@ -1,3 +1,4 @@
+-- Core Neovim options configuration
 vim.g.have_nerd_font = true
 vim.g.netrw_banner = 0
 
@@ -45,6 +46,7 @@ opt.splitbelow = true
 opt.autochdir = false
 opt.iskeyword:append '-'
 opt.mouse = 'a' -- Enable mouse mode
+-- Restore standard clipboard functionality
 opt.clipboard = 'unnamedplus' -- Sync clipboard between OS and Neovim.
 opt.modifiable = true
 opt.encoding = 'UTF-8'

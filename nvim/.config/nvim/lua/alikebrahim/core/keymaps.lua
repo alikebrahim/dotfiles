@@ -1,3 +1,4 @@
+-- Core Neovim keymaps (non-plugin specific)
 local keymap = vim.keymap
 local api = vim.api
 local opts = { noremap = true, silent = true }
@@ -14,9 +15,6 @@ keymap.set('v', 'J', ":m '>+1<CR>gv=gv")
 keymap.set('n', '<leader>m', ':Mason<Return>')
 keymap.set('n', '<leader>l', ':Lazy<Return>')
 keymap.set('n', '<leader>n', ':Noice<Return>')
-
--- Telescope undo tree
-keymap.set('n', '<leader>u', '<cmd>Telescope undo<cr>')
 
 -- Comments
 api.nvim_set_keymap('n', '<C-/>', 'gcc', { noremap = false })
@@ -100,11 +98,3 @@ api.nvim_set_keymap('n', '*', '*zzzv', { noremap = true })
 api.nvim_set_keymap('x', '<leader>p', '"_dP', { noremap = true, silent = true })
 -- [[ end thePrimagen ]]
 
--- Highlight when yanking (copying) text
-vim.api.nvim_create_autocmd('TextYankPost', {
-  desc = 'Highlight when yanking (copying) text',
-  group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
-  callback = function()
-    vim.highlight.on_yank()
-  end,
-})
