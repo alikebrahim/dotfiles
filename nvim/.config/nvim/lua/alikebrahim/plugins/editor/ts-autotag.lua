@@ -14,7 +14,7 @@ return {
     'rescript',
     'xml',
     'php',
-    'markdown',
+    -- 'markdown',
     'astro',
     'glimmer',
     'handlebars',
@@ -24,3 +24,4 @@ return {
     require('nvim-ts-autotag').setup()
   end,
 }
+

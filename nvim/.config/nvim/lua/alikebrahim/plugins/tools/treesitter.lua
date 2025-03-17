@@ -15,8 +15,8 @@ return {
       'lua',
       'luadoc',
       'luap',
-      'markdown',
-      'markdown_inline',
+      -- 'markdown',
+      -- 'markdown_inline',
       'python',
       'query',
       'regex',
@@ -58,3 +58,4 @@ return {
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
   end,
 }
+

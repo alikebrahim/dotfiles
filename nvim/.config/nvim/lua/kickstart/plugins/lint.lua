@@ -6,7 +6,7 @@ return {
     config = function()
       local lint = require 'lint'
       lint.linters_by_ft = {
-        markdown = { 'vale' },
+        -- markdown = { 'vale' },
         javascript = { 'eslint' },
       }
 
