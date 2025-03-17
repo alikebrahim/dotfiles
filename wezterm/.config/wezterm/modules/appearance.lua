@@ -3,6 +3,8 @@ local wezterm = require("wezterm")
 local M = {}
 
 function M.apply(config)
+	-- Cursor style
+	config.default_cursor_style = "SteadyBar"
 	-- Font configuration
 	config.font = wezterm.font("JetBrains Mono", { weight = "Regular", italic = false })
 	config.font_size = 12
@@ -53,8 +55,7 @@ function M.apply(config)
 	-- Behavior
 	config.scrollback_lines = 100000
 	config.default_workspace = "home"
-	config.disable_default_key_bindings = true
+	-- config.disable_default_key_bindings = true
 end
 
 return M
-
