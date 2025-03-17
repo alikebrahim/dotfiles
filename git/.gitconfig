@@ -10,6 +10,7 @@
 	clean = git-lfs clean -- %f
 [core]
     pager = delta
+    editor = nvim
 
 [interactive]
     diffFilter = delta --color-only
