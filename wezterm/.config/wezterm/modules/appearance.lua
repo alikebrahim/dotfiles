@@ -53,8 +53,7 @@ function M.apply(config)
 	-- Behavior
 	config.scrollback_lines = 100000
 	config.default_workspace = "home"
-	config.disable_default_key_bindings = true
+	-- config.disable_default_key_bindings = true
 end
 
 return M
-
