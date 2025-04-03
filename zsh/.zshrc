@@ -33,3 +33,5 @@ if [[ -d "$ZSH_CONFIG_DIR/plugins" ]]; then
     done
   fi
 fi
+
+fpath=(~/.zsh/completions $fpath)
