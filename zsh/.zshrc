@@ -19,115 +19,25 @@ fi
 source "${ZINIT_HOME}/zinit.zsh"
 
 # ENV VARS
-## Local bin
+# ********
+## LOCAL BIN
 export PATH="$HOME/.local/bin:$PATH"
 ## GO
 export PATH="/usr/local/go/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
-# export GOPATH="$HOME/go" // deprecated
-## Pyenv
+## PYENV
 export PYENV_ROOT="$HOME/.pyenv"
 command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 ## NVM
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-# Java environment
-# export JAVA_HOME="/usr/bin/java"
-# sass
-# export PATH="/opt/dart-sass:$PATH"
-# # zig
-# export PATH="$HOME/.local/bin/zig-linux-x86_64-0.13.0/:$PATH"
-# .local bin
 
-# Add in Powerlevel10k
-zinit ice depth=1; zinit light romkatv/powerlevel10k
-
-# Load completions
-## This should precede plugins to avoid sytax-highlighting
-## from overriding fzf-tab
-autoload -Uz compinit && compinit 
-# Add in zsh plugins
-# zinit light zsh-users/zsh-completions
-zinit light zdharma-continuum/fast-syntax-highlighting
-zinit light zsh-users/zsh-autosuggestions
-zinit light Aloxaf/fzf-tab
-
-# Add in snippets
-zinit snippet OMZP::sudo
-zinit snippet OMZP::command-not-found
-# zinit snippet OMZL::git.zsh
-# zinit snippet OMZP::git
-# zinit snippet OMZP::ubuntu
-
-
-zinit cdreplay -q
-
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
-# fzf
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-#
-# Keybindings
-bindkey -e
-bindkey '^p' history-search-backward
-bindkey '^n' history-search-forward
-bindkey '^[w' kill-region
-
-# History
-HISTSIZE=5000
-HISTFILE=~/.zsh_history
-SAVEHIST=$HISTSIZE
-HISTDUP=erase
-setopt appendhistory
-setopt sharehistory
-setopt hist_ignore_space
-setopt hist_ignore_all_dups
-setopt hist_save_no_dups
-setopt hist_ignore_dups
-setopt hist_find_no_dups
-
-# Completion styling
-zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' # Case-insensitive completion
-zstyle ':completion:*' menu no # Don't show completion menu (needed for fzf-tab)
-zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS} # set list-colors to enable filename colorizing
-zstyle ':fzf-tab:*' switch-group '<' '>' # switch group using `<` and `>`
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath' # Directory preview for cd completions
-zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'eza -1 --color=always $realpath' # Directory preview for cd completions
-zstyle ':completion:*:git-checkout:*' sort false # disable sort when completing `git checkout`
-zstyle ':completion:*:descriptions' format '[%d]' # set descriptions format to enable group support
-
-# Aliases
-# Config aliases
-alias zconf="vim ~/.zshrc"
-alias zsrc="source ~/.zshrc"
-alias vconf="vim ~/.config/nvim"
-alias wezconf="vim ~/.config/wezterm/wezterm.lua"
-alias tconf="vim ~/.tmux.conf"
-
-# File system navigation and listing
-alias ls="eza"
-alias ll="eza --color=always --long --git --icons=always"
-alias la="eza --color=always --long --all --git --icons=always"
-alias lt="eza --tree"
-
-
-# Tool aliases
-alias awk="gawk"
-alias lg="lazygit"
-alias cat="bat"
-alias ntop="pipx run nvitop"
-alias vim='nvim'
-
-# Shell integrations
-eval "$(fzf --zsh)"
-eval "$(zoxide init --cmd cd zsh)"
-eval "$(direnv hook zsh)"
-
-# Tool Configurations
-# bat config
+# TOOL CONFIG
+# ***********
+## bat
 export BAT_THEME="1337"
-# fzf config
+## fzf
 export FZF_DEFAULT_COMMAND="fd --hidden --strip-cwd-prefix --exclude .git"
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_ALT_C_COMMAND="fd --type=d --hidden --strip-cwd-prefix --exclude .git"
@@ -147,6 +57,113 @@ export FZF_DEFAULT_OPTS='
   --bind "ctrl-u:preview-page-up"
   '
 
+# ENV VARS (UNSUED)
+# *****************
+## Java environment
+# export java_home="/usr/bin/java"
+## sass
+# export PATH="/opt/dart-sass:$PATH"
+## # zig
+# export PATH="$HOME/.local/bin/zig-linux-x86_64-0.13.0/:$PATH"
+
+
+# Load completions
+## This should precede plugins to avoid sytax-highlighting
+## from overriding fzf-tab
+autoload -Uz compinit && compinit 
+
+# PLUGINS
+# -------
+zinit ice depth=1; zinit light romkatv/powerlevel10k
+zinit light zsh-users/zsh-autosuggestions
+zinit light zsh-users/zsh-syntax-highlighting # workes best with fzf tab 
+zinit light jeffreytse/zsh-vi-mode
+zinit light Aloxaf/fzf-tab #keep last
+
+# SNIPPETS
+# --------
+zinit snippet OMZP::sudo
+zinit snippet OMZP::command-not-found
+# zinit snippet OMZL::git.zsh
+# zinit snippet OMZP::git
+# zinit snippet OMZP::ubuntu
+
+zinit cdreplay -q
+
+# SOURCE PLUGIN CONFIG
+# --------------------
+## p10k
+## To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+## fzf
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# KEYBINDINGS
+# -----------
+bindkey -e
+bindkey '^p' history-search-backward
+bindkey '^n' history-search-forward
+bindkey '^[w' kill-region
+
+# HISTORY
+# -------
+HISTSIZE=5000
+HISTFILE=~/.zsh_history
+SAVEHIST=$HISTSIZE
+HISTDUP=erase
+setopt appendhistory
+setopt sharehistory
+setopt hist_ignore_space
+setopt hist_ignore_all_dups
+setopt hist_save_no_dups
+setopt hist_ignore_dups
+setopt hist_find_no_dups
+
+# COMPLETION STYLING
+# ------------------
+zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}' # Case-insensitive completion
+zstyle ':completion:*' menu no # Don't show completion menu (needed for fzf-tab)
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS} # set list-colors to enable filename colorizing
+zstyle ':fzf-tab:*' switch-group '<' '>' # switch group using `<` and `>`
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath' # Directory preview for cd completions
+zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'eza -1 --color=always $realpath' # Directory preview for cd completions
+zstyle ':completion:*:git-checkout:*' sort false # disable sort when completing `git checkout`
+zstyle ':completion:*:descriptions' format '[%d]' # set descriptions format to enable group support
+
+# ALIASES
+# -------
+## Config aliases
+alias zconf="vim ~/.zshrc"
+alias zsrc="source ~/.zshrc"
+alias vconf="vim ~/.config/nvim"
+alias wezconf="vim ~/.config/wezterm/wezterm.lua"
+alias tconf="vim ~/.tmux.conf"
+
+## FILE SYSTEM NAVIGATION AND LISTING
+# -----------------------------------
+alias ls="eza"
+alias ll="eza --color=always --long --git --icons=always"
+alias la="eza --color=always --long --all --git --icons=always"
+alias lt="eza --tree"
+
+## Tool aliases
+alias awk="gawk"
+alias lg="lazygit"
+alias cat="bat"
+alias ntop="pipx run nvitop"
+alias vim='nvim'
+alias grep='grep --color'
+
+# SHELL INTEGRATIONS
+# ------------------
+eval "$(fzf --zsh)"
+eval "$(zoxide init --cmd cd zsh)"
+eval "$(direnv hook zsh)"
+
+
+# FUNCTIONS
+# ---------
+## fzf
 _fzf_compgen_path() {
   fd --hidden --exclude .git . "$1"
 }
