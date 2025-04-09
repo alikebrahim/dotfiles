@@ -157,7 +157,7 @@ alias lg="lazygit"
 alias cat="bat"
 alias ntop="pipx run nvitop"
 alias vim='nvim'
-alias grep='grep --color'
+alias grep='grep -E --color=auto'
 
 # SHELL INTEGRATIONS
 # ------------------
