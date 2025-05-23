@@ -32,6 +32,8 @@ eval "$(pyenv init -)"
 ## NVM
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+## conda
+export PATH="/home/alikebrahim/miniconda3/bin:$PATH"
 
 # TOOL CONFIG
 # ***********
@@ -158,6 +160,8 @@ alias cat="bat"
 alias ntop="pipx run nvitop"
 alias vim='nvim'
 alias grep='grep --color'
+alias bnvim='NVIM_APPNAME="nvim-blank" nvim'
+alias lnvim='NVIM_APPNAME="nvim-lazy" nvim'
 
 # SHELL INTEGRATIONS
 # ------------------
@@ -188,3 +192,16 @@ _fzf_comprun() {
     *)            fzf --preview "$show_file_or_dir_preview" "$@" ;;
   esac
 }
+
+. "$HOME/.atuin/bin/env"
+
+eval "$(atuin init zsh)"
+
+# pnpm
+export PNPM_HOME="/home/alikebrahim/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
