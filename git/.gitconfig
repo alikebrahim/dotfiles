@@ -1,7 +1,7 @@
 [credential]
 	helper = store
 [user]
-	name = aliebrahim
+	name = Ali K. Ebrahim
 	email = alikebrahim@me.com
 	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEcptigfOE1s34Y8TLx78yamv3nAxidgn0aqdnSFKWsV
 [filter "lfs"]
