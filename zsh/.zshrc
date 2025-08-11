@@ -161,7 +161,6 @@ alias awk="gawk"
 alias lg="lazygit"
 alias cat="bat"
 alias ntop="pipx run nvitop"
-alias vim='nvim'
 alias grep='grep --color'
 alias bnvim='NVIM_APPNAME="nvim-blank" nvim'
 alias lnvim='NVIM_APPNAME="nvim-lazy" nvim'
