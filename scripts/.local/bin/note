@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Set base dir
+base_dir="${HOME}/Documents/notes"
+base_diary_dir="${HOME}/Documents/notes/diary"
+
+# Get the date in the specified format
+date_str=$(date "+%a_%d-%m-%y")
+
+# Get the topic/subject from positional argument 1, if provided
+label="$1"
+
+# Construct the filename
+if [[ -n "${label}" ]]; then
+  if [[ -d "${base_dir}/${label}" ]]; then
+    filename="${base_dir}/${label}/${date_str}.md"
+  else
+    mkdir -p "${base_dir}/${label}"
+    filename="${base_dir}/${label}/${date_str}.md"
+  fi
+else
+  if [[ -d "${base_diary_dir}" ]]; then
+    filename="${base_diary_dir}/${date_str}.md"
+  else
+    mkdir -p "${base_diary_dir}"
+    filename="${base_diary_dir}/${date_str}.md"
+  fi
+fi
+
+# Function to open/create the nvim buffer with the filename
+note() {
+  nvim "$filename"
+}
+
+# Call the function
+note
