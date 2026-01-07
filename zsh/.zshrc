@@ -195,9 +195,9 @@ _fzf_comprun() {
   esac
 }
 
-. "$HOME/.atuin/bin/env"
-
-eval "$(atuin init zsh)"
+# . "$HOME/.atuin/bin/env"
+#
+# eval "$(atuin init zsh)"
 
 # pnpm
 export PNPM_HOME="/home/alikebrahim/.local/share/pnpm"
@@ -207,3 +207,17 @@ case ":$PATH:" in
 esac
 # pnpm end
 
+
+# opencode
+export PATH=/home/alikebrahim/.opencode/bin:$PATH
+
+# bun completions
+[ -s "/home/alikebrahim/.bun/_bun" ] && source "/home/alikebrahim/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
