@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=LM Studio
+Exec=/home/alikebrahim/Apps/LMStudio %u 
+Terminal=false
+Type=Application
+Icon=/home/alikebrahim/.local/share/icons/lmstudio.png
+StartupWMClass=lmstudio
+Comment=LM Studio
+Categories=Office;

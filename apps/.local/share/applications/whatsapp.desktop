@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=WhatsApp
+Exec=google-chrome --app=https://web.whatsapp.com
+Icon=/home/alikebrahim/.local/share/icons/WhatsApp.png
+Type=Application
+Categories=Network;
+StartupNotify=true
