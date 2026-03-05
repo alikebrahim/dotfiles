@@ -1,50 +1,37 @@
 #!/bin/bash
 
-# Configuration
+# note-preview: preview renderer used by note-tab-picker.
+
+NOTES_DIR="${HOME}/Documents/notes"
 PREVIEW_LINES=20
 
-file="$1"
-query="$2"
+normalize_relative_path() {
+  local input_path="$1"
+  local normalized
 
-# Normalize candidate path to notes-relative form
-file="${file#./}"
-if [[ "$file" == "$HOME/Documents/notes/"* ]]; then
-  file="${file#"$HOME/Documents/notes/"}"
-fi
-
-if [[ -z "$file" ]]; then
-    exit 0
-fi
-
-# Ensure full path
-filepath="$HOME/Documents/notes/$file"
-
-if [[ ! -f "$filepath" ]]; then
-    echo "File not found: $filepath"
-    exit 1
-fi
-
-if [[ -n "$query" ]]; then
-  # Find the first line number where the query appears in the file
-  # using ripgrep (-n for line number, -m 1 for max 1 match)
-  line=$(rg -n -m 1 -F -i -- "$query" "$filepath" 2>/dev/null | cut -d: -f1)
-  
-  if [[ -n "$line" && "$line" =~ ^[0-9]+$ ]]; then
-    # Calculate start line to show some context above the match
-    start_line=$((line - 5))
-    [[ $start_line -lt 1 ]] && start_line=1
-    
-    end_line=$((start_line + PREVIEW_LINES - 1))
-    
-    bat --style=numbers -n --color=always \
-      --highlight-line "$line" \
-      --line-range "$start_line:$end_line" \
-      "$filepath"
-  else
-    # Fallback if query not found in this specific file
-    bat --style=numbers -n --color=always --line-range ":$PREVIEW_LINES" "$filepath"
+  normalized="${input_path#./}"
+  if [[ "$normalized" == "$NOTES_DIR/"* ]]; then
+    normalized="${normalized#"$NOTES_DIR/"}"
   fi
-else
-  # Default preview without search query
-  bat --style=numbers -n --color=always --line-range ":$PREVIEW_LINES" "$filepath"
-fi
+
+  printf '%s\n' "$normalized"
+}
+
+main() {
+  local file_arg="$1"
+  local rel_path
+  local abs_path
+
+  rel_path="$(normalize_relative_path "$file_arg")"
+  [[ -n "$rel_path" ]] || exit 0
+
+  abs_path="$NOTES_DIR/$rel_path"
+  if [[ ! -f "$abs_path" ]]; then
+    printf 'File not found: %s\n' "$abs_path"
+    exit 1
+  fi
+
+  bat --style=numbers -n --color=always --line-range ":$PREVIEW_LINES" "$abs_path"
+}
+
+main "$@"

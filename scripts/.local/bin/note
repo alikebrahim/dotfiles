@@ -1,76 +1,395 @@
 #!/bin/bash
 
-# Set base dir
-base_dir="${HOME}/Documents/notes"
-base_diary_dir="${HOME}/Documents/notes/diary"
+# note: create/open markdown notes under ~/Documents/notes with optional
+# git synchronization for multi-machine workflows.
+#
+# Normal flow:
+# 1) Resolve note target from arguments.
+# 2) Pre-open sync (fetch/rebase with temporary stash) when notes repo is ready.
+# 3) Open in nvim.
+# 4) Post-exit sync (stage file, commit, push) when nvim exits successfully.
+#
+# Bootstrap flow:
+#   note --bootstrap-sync
+#   Commits each changed/untracked file in the notes repo, then pushes.
 
-# Get the date in the specified format
-date_str=$(date "+%a_%d-%m-%y")
+NOTES_DIR="${HOME}/Documents/notes"
+DIARY_DIR="${NOTES_DIR}/diary"
+NOTES_BRANCH="master"
 
-# Check for help flag
-if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-  echo "Usage: note [topic] [note_name]"
-  echo ""
-  echo "A quick script to create and open daily markdown notes"
-  echo ""
-  echo "Options:"
-  echo "  -h, --help    Show this help message and exit"
-  echo "  TAB picker    Ctrl-Y select, Ctrl-N/P list, Ctrl-J/K preview"
-  echo ""
-  echo "Examples:"
-  echo "  note                              Opens today's diary entry in ~/Documents/notes/diary/<date>.md"
-  echo "  note work                         Opens today's 'work' note in ~/Documents/notes/work/<date>.md"
-  echo "  note \"my project\"                 Opens today's note in ~/Documents/notes/my_project/<date>.md"
-  echo "  note \"my project\" \"meeting notes\" Opens a specific note in ~/Documents/notes/my_project/meeting_notes-<date>.md"
-  exit 0
-fi
+print_help() {
+  cat <<'EOF'
+Usage: note [topic] [note_name]
 
-# Check if $1 is an existing file or a ripgrep match output from fzf-tab
-if [[ -n "$1" ]]; then
-  # Extract file path before the first colon (in case of ripgrep output)
-  possible_file="${1%%:*}"
-  
-  # Check if the extracted path exists in the base_dir
-  if [[ -f "${base_dir}/${possible_file}" ]]; then
-    # Extract line number if it exists
-    rest="${1#*:}"
-    line_args=""
-    if [[ "$rest" != "$1" ]]; then
-      line_num="${rest%%:*}"
-      if [[ "$line_num" =~ ^[0-9]+$ ]]; then
-        line_args="+${line_num}"
-      fi
-    fi
-    
-    nvim $line_args "${base_dir}/${possible_file}"
-    exit 0
-  fi
-fi
+Create and open daily markdown notes.
 
-# Get and sanitize arguments (replace spaces with underscores)
-label="${1// /_}"
-note_name="${2// /_}"
+Options:
+  -h, --help         Show this help message and exit
+  TAB picker         Ctrl-Y select, Ctrl-N/P list, Ctrl-J/K preview
+  --bootstrap-sync   Commit each changed/untracked file, then push
+  Git sync           Pre-open fetch/rebase; post-exit add/commit/push (master)
+  NOTE_GIT_SYNC      Set NOTE_GIT_SYNC=0 to skip post-exit commit/push
 
-# Construct the filename
-if [[ -n "${label}" ]]; then
-  # Ensure project directory exists
-  mkdir -p "${base_dir}/${label}"
+Machine mapping for commit suffix:
+  System76 + Serval WS => system76-servalws
+  Micro Computer _HK_ Tech Limited + Venus series => minisforum-um780xtx
 
-  if [[ -n "${note_name}" ]]; then
-    filename="${base_dir}/${label}/${note_name}-${date_str}.md"
-  else
-    filename="${base_dir}/${label}/${date_str}.md"
-  fi
-else
-  # Ensure diary directory exists
-  mkdir -p "${base_diary_dir}"
-  filename="${base_diary_dir}/${date_str}.md"
-fi
-
-# Function to open/create the nvim buffer with the filename
-note() {
-  nvim "$filename"
+Examples:
+  note
+  note work
+  note "my project"
+  note "my project" "meeting notes"
+EOF
 }
 
-# Call the function
-note
+log_info() {
+  local phase="$1"
+  shift
+  printf '[note][%s] %s\n' "$phase" "$*"
+}
+
+log_warn() {
+  local phase="$1"
+  shift
+  printf '[note][%s] %s\n' "$phase" "$*" >&2
+}
+
+log_debug() {
+  local phase="$1"
+  shift
+  if [[ "${NOTE_SYNC_VERBOSE:-0}" == "1" ]]; then
+    printf '[note][%s][debug] %s\n' "$phase" "$*"
+  fi
+}
+
+# Run a command and capture output for verbose-only logging.
+run_quiet() {
+  local phase="$1"
+  shift
+  local out
+  if out="$("$@" 2>&1)"; then
+    [[ -n "$out" ]] && log_debug "$phase" "$out"
+    return 0
+  fi
+  [[ "${NOTE_SYNC_VERBOSE:-0}" == "1" ]] && log_warn "$phase" "$out"
+  return 1
+}
+
+# Run a command interactively to preserve TTY prompts (1Password/SSH).
+run_interactive() {
+  local phase="$1"
+  shift
+  "$@"
+  local rc=$?
+  [[ $rc -ne 0 ]] && log_warn "$phase" "command failed: $*"
+  return $rc
+}
+
+# Validate SSH agent availability and wire 1Password agent socket when present.
+ensure_ssh_auth_ready() {
+  local phase="$1"
+  local ssh_add_rc
+
+  if [[ -z "$SSH_AUTH_SOCK" || ! -S "$SSH_AUTH_SOCK" ]]; then
+    if [[ -S "$HOME/.1password/agent.sock" ]]; then
+      export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
+      log_debug "$phase" "set SSH_AUTH_SOCK to ~/.1password/agent.sock"
+    fi
+  fi
+
+  ssh-add -l >/dev/null 2>&1
+  ssh_add_rc=$?
+  # ssh-add exit codes:
+  # 0 => agent reachable with identities
+  # 1 => agent reachable, no identities listed
+  # 2 => cannot connect to agent
+  if [[ $ssh_add_rc -eq 2 ]]; then
+    log_warn "$phase" "1Password SSH agent is not available. Open/unlock 1Password and ensure SSH agent integration is enabled."
+    return 1
+  fi
+
+  return 0
+}
+
+# Map known hardware vendor/model pairs to stable machine names.
+resolve_machine_name() {
+  local phase="${1:-pre}"
+
+  if ! command -v jq >/dev/null 2>&1; then
+    log_warn "$phase" "jq is required for machine mapping; install jq to enable git sync"
+    return 1
+  fi
+
+  local json vendor model
+  json="$(hostnamectl --json=short 2>/dev/null || true)"
+  vendor="$(printf '%s' "$json" | jq -r '.HardwareVendor // ""')"
+  model="$(printf '%s' "$json" | jq -r '.HardwareModel // ""')"
+
+  if [[ "$vendor" == "System76" && "$model" == "Serval WS" ]]; then
+    printf '%s\n' "system76-servalws"
+    return 0
+  fi
+
+  if [[ "$vendor" == "Micro Computer _HK_ Tech Limited" && "$model" == "Venus series" ]]; then
+    printf '%s\n' "minisforum-um780xtx"
+    return 0
+  fi
+
+  log_warn "$phase" "unsupported machine vendor/model for sync mapping: '$vendor' / '$model'"
+  return 1
+}
+
+notes_repo_ready() {
+  git -C "$NOTES_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  git -C "$NOTES_DIR" remote get-url origin >/dev/null 2>&1 || return 1
+}
+
+push_with_retry() {
+  local phase="$1"
+  local final_error_msg="$2"
+
+  run_interactive "$phase" git -C "$NOTES_DIR" push origin "$NOTES_BRANCH" && {
+    log_info "$phase" "push succeeded"
+    return 0
+  }
+
+  log_warn "$phase" "initial push failed; retrying after rebase"
+  run_interactive "$phase" git -C "$NOTES_DIR" fetch origin "$NOTES_BRANCH" || return 1
+  run_interactive "$phase" git -C "$NOTES_DIR" pull --rebase origin "$NOTES_BRANCH" || return 1
+  run_interactive "$phase" git -C "$NOTES_DIR" push origin "$NOTES_BRANCH" || {
+    log_warn "$phase" "$final_error_msg"
+    return 1
+  }
+
+  log_info "$phase" "push succeeded after retry"
+  return 0
+}
+
+# Keep local notes current with origin before opening the editor.
+sync_pre_open() {
+  notes_repo_ready || return 0
+  ensure_ssh_auth_ready "pre" || return 0
+
+  local stash_name=""
+  local stash_ref=""
+  local had_stash=0
+  local behind=0
+  local has_remote_branch=0
+
+  log_info "pre" "fetch origin"
+  run_interactive "pre" git -C "$NOTES_DIR" fetch origin || {
+    log_warn "pre" "fetch failed; continuing without pull"
+    return 0
+  }
+
+  if [[ -n "$(git -C "$NOTES_DIR" status --porcelain)" ]]; then
+    stash_name="note-autostash-$(date +%Y%m%d%H%M%S)"
+    run_quiet "pre" git -C "$NOTES_DIR" stash push -u -m "$stash_name" || {
+      log_warn "pre" "stash failed; continuing without pull"
+      return 0
+    }
+    stash_ref="$(git -C "$NOTES_DIR" rev-parse --verify -q stash@{0} 2>/dev/null || true)"
+    had_stash=1
+    log_debug "pre" "stashed local changes as $stash_name"
+  fi
+
+  if git -C "$NOTES_DIR" show-ref --verify --quiet "refs/remotes/origin/$NOTES_BRANCH"; then
+    has_remote_branch=1
+  fi
+
+  if [[ "$has_remote_branch" -eq 1 ]]; then
+    behind="$(git -C "$NOTES_DIR" rev-list --count HEAD..origin/$NOTES_BRANCH 2>/dev/null || printf '0')"
+    log_debug "pre" "behind count: $behind"
+    if [[ "$behind" -gt 0 ]]; then
+      log_info "pre" "pull --rebase origin/$NOTES_BRANCH"
+      run_interactive "pre" git -C "$NOTES_DIR" pull --rebase origin "$NOTES_BRANCH" || {
+        log_warn "pre" "pull --rebase failed; continuing"
+      }
+    else
+      log_info "pre" "up to date"
+    fi
+  else
+    log_info "pre" "origin/$NOTES_BRANCH not found yet; skipping pull"
+  fi
+
+  if [[ "$had_stash" -eq 1 && -n "$stash_ref" ]]; then
+    run_quiet "pre" git -C "$NOTES_DIR" stash apply "$stash_ref" || {
+      log_warn "pre" "conflict while restoring stashed local changes; resolve in repo"
+      return 0
+    }
+    run_quiet "pre" git -C "$NOTES_DIR" stash drop "$stash_ref" || true
+    log_debug "pre" "restored and dropped $stash_name"
+  fi
+}
+
+# Commit and push the opened note after nvim exits successfully.
+sync_post_exit() {
+  local absolute_file="$1"
+
+  notes_repo_ready || return 0
+  ensure_ssh_auth_ready "post" || return 0
+
+  local machine rel_file note_stem commit_msg
+  machine="$(resolve_machine_name "post")" || return 0
+
+  rel_file="${absolute_file#"$NOTES_DIR/"}"
+  note_stem="$(basename "$rel_file" .md)"
+  commit_msg="${note_stem}-${machine}"
+
+  git -C "$NOTES_DIR" add -- "$rel_file" >/dev/null 2>&1 || return 0
+  git -C "$NOTES_DIR" diff --cached --quiet && return 0
+
+  git -C "$NOTES_DIR" commit -m "$commit_msg" >/dev/null 2>&1 || {
+    log_warn "post" "commit failed; leaving changes staged"
+    return 0
+  }
+  log_info "post" "committed: $commit_msg"
+
+  push_with_retry "post" "push failed after retry; run manual git sync in $NOTES_DIR" || return 0
+}
+
+# One-time style importer: commit each changed path, continue on per-file failures.
+run_bootstrap_sync() {
+  notes_repo_ready || {
+    log_warn "bootstrap" "repo/origin not ready at $NOTES_DIR"
+    return 1
+  }
+
+  ensure_ssh_auth_ready "bootstrap" || return 1
+
+  local machine
+  machine="$(resolve_machine_name "bootstrap")" || return 1
+
+  log_info "bootstrap" "starting bootstrap sync"
+  sync_pre_open
+
+  local -a changed_files
+  local -a failed_files
+  local rel_file commit_msg
+  local committed=0
+  local skipped=0
+  local failed=0
+
+  while IFS= read -r -d '' rel_file; do
+    changed_files+=("$rel_file")
+  done < <(git -C "$NOTES_DIR" ls-files -m -o --exclude-standard -z)
+
+  if [[ "${#changed_files[@]}" -eq 0 ]]; then
+    log_info "bootstrap" "no local changes to bootstrap"
+    return 0
+  fi
+
+  log_info "bootstrap" "processing ${#changed_files[@]} changed path(s)"
+
+  for rel_file in "${changed_files[@]}"; do
+    log_debug "bootstrap" "processing: $rel_file"
+
+    git -C "$NOTES_DIR" add -- "$rel_file" >/dev/null 2>&1 || {
+      failed=$((failed + 1))
+      failed_files+=("$rel_file")
+      log_warn "bootstrap" "failed to stage: $rel_file"
+      continue
+    }
+
+    git -C "$NOTES_DIR" diff --cached --quiet -- "$rel_file" && {
+      skipped=$((skipped + 1))
+      continue
+    }
+
+    commit_msg="$(basename "$rel_file")-${machine}-bootstrap"
+    if run_quiet "bootstrap" git -C "$NOTES_DIR" commit -m "$commit_msg"; then
+      committed=$((committed + 1))
+      log_info "bootstrap" "committed: $commit_msg"
+    else
+      git -C "$NOTES_DIR" reset -q HEAD -- "$rel_file" >/dev/null 2>&1 || true
+      failed=$((failed + 1))
+      failed_files+=("$rel_file")
+      log_warn "bootstrap" "commit failed for: $rel_file"
+    fi
+  done
+
+  if [[ "$committed" -eq 0 ]]; then
+    log_info "bootstrap" "no commits created (skipped=$skipped failed=$failed)"
+    return 0
+  fi
+
+  push_with_retry "bootstrap" "push failed after retry; run manual git sync in $NOTES_DIR" || true
+
+  log_info "bootstrap" "done: committed=$committed skipped=$skipped failed=$failed"
+  if [[ "$failed" -gt 0 ]]; then
+    for rel_file in "${failed_files[@]}"; do
+      log_warn "bootstrap" "failed path: $rel_file"
+    done
+  fi
+
+  return 0
+}
+
+resolve_target_file() {
+  local first_arg="$1"
+  local second_arg="$2"
+
+  if [[ -n "$first_arg" && -f "${NOTES_DIR}/${first_arg}" ]]; then
+    printf '%s\n' "${NOTES_DIR}/${first_arg}"
+    return 0
+  fi
+
+  local label="${first_arg// /_}"
+  local note_name="${second_arg// /_}"
+  local date_str
+  date_str="$(date "+%a_%d-%m-%y")"
+
+  if [[ -n "$label" ]]; then
+    mkdir -p "${NOTES_DIR}/${label}"
+    if [[ -n "$note_name" ]]; then
+      printf '%s\n' "${NOTES_DIR}/${label}/${note_name}-${date_str}.md"
+    else
+      printf '%s\n' "${NOTES_DIR}/${label}/${date_str}.md"
+    fi
+  else
+    mkdir -p "$DIARY_DIR"
+    printf '%s\n' "${DIARY_DIR}/${date_str}.md"
+  fi
+}
+
+open_note_file() {
+  local target_file="$1"
+  local nvim_status=0
+
+  sync_pre_open
+
+  nvim "$target_file"
+  nvim_status=$?
+
+  if [[ "$nvim_status" -eq 0 && "${NOTE_GIT_SYNC:-1}" == "1" ]]; then
+    sync_post_exit "$target_file"
+  fi
+
+  return "$nvim_status"
+}
+
+main() {
+  local arg1="${1-}"
+  local arg2="${2-}"
+
+  case "$arg1" in
+    -h|--help)
+      print_help
+      return 0
+      ;;
+    --bootstrap-sync)
+      run_bootstrap_sync
+      return $?
+      ;;
+    --bootstrap-sync=*)
+      log_warn "bootstrap" "invalid option '$arg1'; use --bootstrap-sync"
+      return 1
+      ;;
+  esac
+
+  local target_file
+  target_file="$(resolve_target_file "$arg1" "$arg2")"
+  open_note_file "$target_file"
+}
+
+main "$@"
