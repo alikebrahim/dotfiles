@@ -1,0 +1,4 @@
+#compdef note
+local -a files
+files=("${(@f)$(fd -e md -t f --base-directory ~/Documents/notes)}")
+_describe 'note' files

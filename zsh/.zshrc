@@ -78,6 +78,7 @@ export FZF_DEFAULT_OPTS='
 # Load completions
 ## This should precede plugins to avoid sytax-highlighting
 ## from overriding fzf-tab
+fpath=(~/.zsh/completions $fpath)
 autoload -Uz compinit && compinit 
 
 # PLUGINS
@@ -140,6 +141,7 @@ zstyle ':completion:*:git-checkout:*' sort false # disable sort when completing 
 zstyle ':completion:*:descriptions' format '[%d]' # set descriptions format to enable group support
 zstyle ':fzf-tab:*' fzf-flags --bind ctrl-y:accept # ctrl+y for accepting fzf-tab selection
 
+
 # ALIASES
 # -------
 ## Config aliases
@@ -194,6 +196,36 @@ _fzf_comprun() {
     *)            fzf --preview "$show_file_or_dir_preview" "$@" ;;
   esac
 }
+
+note_tab_complete_widget() {
+  emulate -L zsh
+  setopt localoptions noshwordsplit
+
+  local -a parts
+  parts=(${(z)BUFFER})
+
+  if [[ "${parts[1]}" == "note" ]]; then
+    local selection
+    selection="$(note-tab-picker.sh)"
+
+    if [[ -n "$selection" ]]; then
+      BUFFER="note ${(q)selection}"
+      CURSOR=${#BUFFER}
+    fi
+
+    zle redisplay
+    return 0
+  fi
+
+  if (( ${+widgets[fzf-tab-complete]} )); then
+    zle fzf-tab-complete
+  else
+    zle expand-or-complete
+  fi
+}
+
+zle -N note_tab_complete_widget
+bindkey '^I' note_tab_complete_widget
 
 # . "$HOME/.atuin/bin/env"
 #

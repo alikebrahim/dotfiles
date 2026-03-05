@@ -7,24 +7,64 @@ base_diary_dir="${HOME}/Documents/notes/diary"
 # Get the date in the specified format
 date_str=$(date "+%a_%d-%m-%y")
 
-# Get the topic/subject from positional argument 1, if provided
-label="$1"
+# Check for help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  echo "Usage: note [topic] [note_name]"
+  echo ""
+  echo "A quick script to create and open daily markdown notes"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help    Show this help message and exit"
+  echo "  TAB picker    Ctrl-Y select, Ctrl-N/P list, Ctrl-J/K preview"
+  echo ""
+  echo "Examples:"
+  echo "  note                              Opens today's diary entry in ~/Documents/notes/diary/<date>.md"
+  echo "  note work                         Opens today's 'work' note in ~/Documents/notes/work/<date>.md"
+  echo "  note \"my project\"                 Opens today's note in ~/Documents/notes/my_project/<date>.md"
+  echo "  note \"my project\" \"meeting notes\" Opens a specific note in ~/Documents/notes/my_project/meeting_notes-<date>.md"
+  exit 0
+fi
+
+# Check if $1 is an existing file or a ripgrep match output from fzf-tab
+if [[ -n "$1" ]]; then
+  # Extract file path before the first colon (in case of ripgrep output)
+  possible_file="${1%%:*}"
+  
+  # Check if the extracted path exists in the base_dir
+  if [[ -f "${base_dir}/${possible_file}" ]]; then
+    # Extract line number if it exists
+    rest="${1#*:}"
+    line_args=""
+    if [[ "$rest" != "$1" ]]; then
+      line_num="${rest%%:*}"
+      if [[ "$line_num" =~ ^[0-9]+$ ]]; then
+        line_args="+${line_num}"
+      fi
+    fi
+    
+    nvim $line_args "${base_dir}/${possible_file}"
+    exit 0
+  fi
+fi
+
+# Get and sanitize arguments (replace spaces with underscores)
+label="${1// /_}"
+note_name="${2// /_}"
 
 # Construct the filename
 if [[ -n "${label}" ]]; then
-  if [[ -d "${base_dir}/${label}" ]]; then
-    filename="${base_dir}/${label}/${date_str}.md"
+  # Ensure project directory exists
+  mkdir -p "${base_dir}/${label}"
+
+  if [[ -n "${note_name}" ]]; then
+    filename="${base_dir}/${label}/${note_name}-${date_str}.md"
   else
-    mkdir -p "${base_dir}/${label}"
     filename="${base_dir}/${label}/${date_str}.md"
   fi
 else
-  if [[ -d "${base_diary_dir}" ]]; then
-    filename="${base_diary_dir}/${date_str}.md"
-  else
-    mkdir -p "${base_diary_dir}"
-    filename="${base_diary_dir}/${date_str}.md"
-  fi
+  # Ensure diary directory exists
+  mkdir -p "${base_diary_dir}"
+  filename="${base_diary_dir}/${date_str}.md"
 fi
 
 # Function to open/create the nvim buffer with the filename
