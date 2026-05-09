@@ -1,0 +1,10 @@
+#!/bin/bash
+
+THEMES=$(ls ~/.dotfiles/themes/library)
+
+# Using rofi as a selector
+PICKED=$(echo "$THEMES" | rofi -dmenu -p "󰸉 Themes" -i -config ~/.config/rofi/config.rasi)
+
+if [[ -n "$PICKED" ]]; then
+    ~/.dotfiles/bin/theme-apply "$PICKED"
+fi

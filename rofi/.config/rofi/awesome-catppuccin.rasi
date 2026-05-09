@@ -1,0 +1,70 @@
+* {
+    bg: #1e1e2e;
+    bg-alt: #313244;
+    fg: #cdd6f4;
+    accent: #89b4fa;
+    urgent: #f38ba8;
+    muted: #6c7086;
+
+    background-color: transparent;
+    text-color: @fg;
+    font: "monospace 12";
+}
+
+window {
+    width: 600px;
+    border: 2px;
+    border-color: @accent;
+    border-radius: 8px;
+    background-color: @bg;
+}
+
+mainbox {
+    padding: 10px;
+    spacing: 8px;
+}
+
+inputbar {
+    padding: 10px 12px;
+    border-radius: 6px;
+    background-color: @bg-alt;
+    children: [ prompt, entry ];
+}
+
+prompt {
+    text-color: @accent;
+    padding: 0 8px 0 0;
+}
+
+entry {
+    placeholder: "Search...";
+    placeholder-color: @muted;
+}
+
+listview {
+    lines: 8;
+    columns: 1;
+    fixed-height: false;
+    spacing: 4px;
+}
+
+element {
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+element selected {
+    background-color: @bg-alt;
+    text-color: @accent;
+}
+
+element-icon {
+    size: 24px;
+    padding: 0 8px 0 0;
+}
+
+message {
+    padding: 8px;
+    border-radius: 6px;
+    background-color: @bg-alt;
+}
