@@ -4,7 +4,6 @@ local gears = require("gears")
 local awful = require("awful")
 require("awful.autofocus")
 local beautiful = require("beautiful")
-local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
 require("awful.hotkeys_popup.keys")
 
@@ -44,23 +43,21 @@ end
 -- -----------------------------------------------------------------------------
 -- Error handling
 -- -----------------------------------------------------------------------------
+local function report_awesome_error(title, text)
+  local safe_title = tostring(title):gsub("'", "'\\''")
+  local safe_text = tostring(text):gsub("'", "'\\''")
+  awful.spawn.with_shell("notify-send -u critical '" .. safe_title .. "' '" .. safe_text .. "'")
+end
+
 if awesome.startup_errors then
-  naughty.notify({
-    preset = naughty.config.presets.critical,
-    title = "Awesome startup errors",
-    text = awesome.startup_errors,
-  })
+  report_awesome_error("Awesome startup errors", awesome.startup_errors)
 end
 
 local in_error = false
 awesome.connect_signal("debug::error", function(err)
   if in_error then return end
   in_error = true
-  naughty.notify({
-    preset = naughty.config.presets.critical,
-    title = "Awesome runtime error",
-    text = tostring(err),
-  })
+  report_awesome_error("Awesome runtime error", tostring(err))
   in_error = false
 end)
 
@@ -80,8 +77,8 @@ end)
 -- -----------------------------------------------------------------------------
 -- Autostart
 -- -----------------------------------------------------------------------------
-spawn_shell("systemctl --user import-environment DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DESKTOP_SESSION DBUS_SESSION_BUS_ADDRESS")
-spawn_shell("dbus-update-activation-environment --systemd DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE DESKTOP_SESSION")
+-- Normalize this Awesome session as X11 before launching Electron/Qt/Chromium apps.
+os.execute("/home/alikebrahim/.config/scripts/x11-session-env.sh")
 
 os.execute("/home/alikebrahim/.config/scripts/x11-monitor-setup.sh")
 
@@ -97,8 +94,10 @@ run_once_process("xss-lock", "xss-lock --transfer-sleep-lock -- i3lock -c 1e1e2e
 local keys = require("keys")
 local rules = require("rules")
 local signals = require("signals")
+local dynamism = require("dynamism")
 
 -- Initialize components
 root.keys(keys.globalkeys)
 awful.rules.rules = rules.get(keys.clientkeys, keys.clientbuttons)
 signals.setup()
+dynamism.setup()

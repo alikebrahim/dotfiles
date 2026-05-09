@@ -11,7 +11,7 @@ function M.apply(config)
 
 	-- Window appearance
 	config.window_decorations = "RESIZE"
-	config.window_background_opacity = 0.97
+	config.window_background_opacity = 0.80
 	config.window_close_confirmation = "NeverPrompt"
 	config.window_padding = {
 		left = 3,

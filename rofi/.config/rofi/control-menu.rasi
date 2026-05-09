@@ -1,0 +1,102 @@
+/**
+ * Shared control menu for AwesomeWM system controls.
+ * Layout: status/message, search, actions.
+ */
+
+@theme "/dev/null"
+@import "colors.rasi"
+
+* {
+    bg-col: @bg;
+    bg-col-light: @bg-light;
+    border-col: @accent;
+    selected-col: @selected;
+    fg-col: @fg;
+    accent-col: @accent;
+    urgent-col: @urgent;
+    font: "JetBrainsMono Nerd Font 11";
+    background-color: transparent;
+    text-color: @fg-col;
+}
+
+window {
+    width: 640px;
+    border: 2px;
+    border-radius: 12px;
+    border-color: @border-col;
+    background-color: @bg-col;
+    transparency: "real";
+}
+
+mainbox {
+    orientation: vertical;
+    children: [ "message", "inputbar", "listview" ];
+    background-color: transparent;
+    border-radius: 12px;
+}
+
+message {
+    margin: 18px 20px 10px 20px;
+    padding: 12px 14px;
+    border-radius: 9px;
+    background-color: @bg-col-light;
+}
+
+textbox {
+    text-color: @fg-col;
+    font: "JetBrainsMono Nerd Font Bold 10";
+}
+
+inputbar {
+    children: [ "prompt", "entry" ];
+    margin: 0px 20px 12px 20px;
+    padding: 8px;
+    border-radius: 9px;
+    background-color: @bg-col-light;
+}
+
+prompt {
+    padding: 4px 9px;
+    border-radius: 7px;
+    background-color: @accent-col;
+    text-color: @bg-col;
+}
+
+entry {
+    padding: 4px 8px;
+    text-color: @fg-col;
+    background-color: transparent;
+    placeholder-color: @fg-col;
+}
+
+listview {
+    margin: 0px 20px 18px 20px;
+    padding: 0px;
+    columns: 1;
+    lines: 8;
+    fixed-height: false;
+    dynamic: true;
+    cycle: true;
+    spacing: 8px;
+    flow: vertical;
+}
+
+element {
+    padding: 10px 13px;
+    border-radius: 9px;
+    background-color: @bg-col-light;
+    border: 1px;
+    border-color: transparent;
+}
+
+element selected {
+    background-color: @selected-col;
+    text-color: @accent-col;
+    border-color: @accent-col;
+}
+
+element-text {
+    text-color: inherit;
+    vertical-align: 0.5;
+    horizontal-align: 0.0;
+}

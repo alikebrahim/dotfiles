@@ -1,0 +1,102 @@
+/**
+ * Modern Rofi power menu.
+ * Visual grouping: left column = system actions, right column = power profiles.
+ */
+
+@import "colors.rasi"
+
+* {
+    bg-col: @bg;
+    bg-col-light: @bg-light;
+    border-col: @accent;
+    selected-col: @selected;
+    fg-col: @fg;
+    accent-col: @accent;
+    muted-col: @fg;
+    font: "JetBrainsMono Nerd Font 11";
+    background-color: transparent;
+    text-color: @fg-col;
+}
+
+window {
+    width: 720px;
+    height: 380px;
+    border: 2px;
+    border-radius: 12px;
+    border-color: @border-col;
+    background-color: @bg-col;
+    transparency: "real";
+}
+
+mainbox {
+    orientation: vertical;
+    children: [ "message", "inputbar", "listview" ];
+    background-color: transparent;
+    border-radius: 12px;
+}
+
+message {
+    margin: 22px 24px 10px 24px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: @bg-col-light;
+}
+
+textbox {
+    text-color: @fg-col;
+    font: "JetBrainsMono Nerd Font Bold 10";
+}
+
+inputbar {
+    children: [ "prompt", "entry" ];
+    margin: 0px 24px 16px 24px;
+    padding: 8px;
+    border-radius: 8px;
+    background-color: @bg-col-light;
+}
+
+prompt {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background-color: @accent-col;
+    text-color: @bg-col;
+}
+
+entry {
+    padding: 4px 8px;
+    text-color: @fg-col;
+    background-color: transparent;
+}
+
+listview {
+    margin: 0px 24px 22px 24px;
+    padding: 0px;
+    columns: 2;
+    fixed-columns: true;
+    lines: 4;
+    fixed-height: true;
+    dynamic: false;
+    cycle: true;
+    spacing: 10px;
+    flow: vertical;
+}
+
+element {
+    padding: 13px 16px;
+    border-radius: 9px;
+    background-color: @bg-col-light;
+    border: 1px;
+    border-color: transparent;
+}
+
+element selected {
+    background-color: @selected-col;
+    text-color: @accent-col;
+    border-color: @accent-col;
+}
+
+element-text {
+    text-color: inherit;
+    vertical-align: 0.5;
+    horizontal-align: 0.0;
+}

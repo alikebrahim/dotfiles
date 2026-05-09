@@ -20,6 +20,18 @@ keys.globalkeys = gears.table.join(
   awful.key({ modkey }, "u", function() awful.spawn("/home/alikebrahim/.config/scripts/wm-stabilize.sh") end, { description = "refresh monitors/UI", group = "awesome" }),
   awful.key({ modkey }, "Escape", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-power-menu.sh") end, { description = "power menu", group = "awesome" }),
   awful.key({ modkey, "Control" }, "t", function() awful.spawn("/home/alikebrahim/.dotfiles/bin/theme-select") end, { description = "theme selector", group = "launcher" }),
+  awful.key({ modkey, "Shift" }, "a", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-audio-menu.sh") end, { description = "audio controls", group = "launcher" }),
+  awful.key({ modkey, "Shift" }, "w", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-wifi-menu.sh") end, { description = "wi-fi controls", group = "launcher" }),
+  awful.key({ modkey, "Shift" }, "b", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-bluetooth-menu.sh") end, { description = "bluetooth controls", group = "launcher" }),
+  awful.key({ modkey }, "grave", function() require("dynamism").term_scratch:toggle() end, { description = "toggle scratchpad", group = "launcher" }),
+
+  -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
+  awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
+  -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
+  awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
+  awful.key({ modkey }, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh full") end, { description = "full screenshot", group = "screenshots" }),
+  awful.key({ modkey, "Shift" }, "s", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "region screenshot", group = "screenshots" }),
+
   awful.key({ modkey, "Shift" }, "space", function () awful.layout.inc( 1) end, {description = "select next layout", group = "layout"}),
 
   -- Navigation (Pop!_OS / Vim style with multi-screen support)
@@ -117,13 +129,11 @@ keys.clientkeys = gears.table.join(
         c.fullscreen = not c.fullscreen
         c.ontop = c.fullscreen
         c.border_width = c.fullscreen and 0 or beautiful.border_width
-        c.screen.padding = { top = c.fullscreen and 0 or 26 }
         c:raise()
     end, { description = "toggle fullscreen", group = "client" }),
     awful.key({ modkey }, "m", function(c)
         c.maximized = not c.maximized
         c.border_width = c.maximized and 0 or beautiful.border_width
-        c.screen.padding = { top = 24 }
         c:raise()
     end, { description = "toggle maximize", group = "client" }),
     awful.key({ modkey }, "q", function(c) c:kill() end, { description = "close", group = "client" }),
