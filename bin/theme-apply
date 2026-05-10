@@ -168,7 +168,7 @@ fi
 
 # Reload Polybar (if running)
 if pgrep -x polybar > /dev/null; then
-    pkill -USR1 polybar || (pkill polybar && sleep 1 && polybar main &)
+    "$HOME/.config/polybar/launch.sh"
 fi
 
 # Reload Dunst (if running)
