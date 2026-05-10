@@ -78,7 +78,10 @@ POLYBAR_BG=$(with_alpha "E6" "$BG")      # ~90% opaque
 POLYBAR_BG_ALT=$(with_alpha "B3" "$C0")  # ~70% opaque
 ROFI_BG=$(rgba "$BG" "0.88")
 ROFI_BG_LIGHT=$(rgba "$C0" "0.72")
-ROFI_SELECTED=$(rgba "$ACCENT" "0.18")
+ROFI_SURFACE=$(rgba "$C0" "0.60")
+ROFI_SURFACE_HOVER=$(rgba "$C0" "0.82")
+ROFI_SELECTED=$(rgba "$ACCENT" "0.20")
+ROFI_ACCENT_SOFT=$(rgba "$ACCENT" "0.13")
 DUNST_TRANSPARENCY=8
 
 # 1. Update AwesomeWM Colors
@@ -123,8 +126,12 @@ cat <<EOF > "$ROFI_COLORS"
 * {
     bg: $ROFI_BG;
     bg-light: $ROFI_BG_LIGHT;
+    surface: $ROFI_SURFACE;
+    surface-hover: $ROFI_SURFACE_HOVER;
     fg: $FG;
+    muted: $C8;
     accent: $ACCENT;
+    accent-soft: $ROFI_ACCENT_SOFT;
     urgent: $C1;
     selected: $ROFI_SELECTED;
 }

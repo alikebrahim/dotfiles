@@ -1,6 +1,5 @@
 local gears = require("gears")
 local awful = require("awful")
-local hotkeys_popup = require("awful.hotkeys_popup")
 local beautiful = require("beautiful")
 
 local keys = {}
@@ -9,7 +8,7 @@ local keys = {}
 -- Global Keys
 -- -----------------------------------------------------------------------------
 keys.globalkeys = gears.table.join(
-  awful.key({ modkey }, "s", hotkeys_popup.show_help, { description = "show help", group = "awesome" }),
+  awful.key({ modkey }, "s", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-keybinds.sh") end, { description = "show keybinds", group = "awesome" }),
 
   -- Launcher
   awful.key({ modkey }, "Return", function() awful.spawn(terminal) end, { description = "open terminal", group = "launcher" }),

@@ -1,6 +1,5 @@
 /**
- * Shared control menu for AwesomeWM system controls.
- * Layout: status/message, search, actions.
+ * Large keybind cheat sheet for AwesomeWM.
  */
 
 @theme "/dev/null"
@@ -9,7 +8,6 @@
 * {
     bg-col: @bg;
     surface-col: @surface;
-    surface-hover-col: @surface-hover;
     selected-col: @selected;
     accent-soft-col: @accent-soft;
     border-col: @accent;
@@ -23,7 +21,8 @@
 }
 
 window {
-    width: 660px;
+    width: 980px;
+    height: 760px;
     border: 2px;
     border-radius: 14px;
     border-color: @border-col;
@@ -80,26 +79,26 @@ entry {
 listview {
     padding: 0px;
     columns: 1;
-    lines: 8;
+    lines: 22;
     fixed-height: false;
     dynamic: true;
     cycle: true;
-    spacing: 8px;
+    spacing: 4px;
     flow: vertical;
     background-color: transparent;
 }
 
 element {
-    padding: 10px 13px;
-    border-radius: 10px;
-    background-color: @surface-col;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background-color: transparent;
     border: 1px;
     border-color: transparent;
     text-color: @fg-col;
 }
 
 element alternate {
-    background-color: @surface-col;
+    background-color: transparent;
 }
 
 element selected {

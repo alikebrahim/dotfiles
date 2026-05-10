@@ -19,114 +19,138 @@ configuration {
 
 * {
     bg-col: @bg;
-    bg-col-light: @bg-light;
-    border-col: @accent;
+    surface-col: @surface;
+    surface-hover-col: @surface-hover;
     selected-col: @selected;
-    blue: @accent;
+    accent-soft-col: @accent-soft;
+    border-col: @accent;
+    accent-col: @accent;
     fg-col: @fg;
-    fg-col2: @urgent;
-    grey: @fg;
-    width: 600;
+    muted-col: @muted;
+    urgent-col: @urgent;
     font: "JetBrainsMono Nerd Font 12";
+    background-color: transparent;
+    text-color: @fg-col;
 }
 
-element-text, element-icon , mode-switcher {
+element-text, element-icon, mode-switcher {
     background-color: inherit;
-    text-color:       inherit;
+    text-color: inherit;
 }
 
 window {
-    height: 360px;
-    border: 3px;
-    border-radius: 10px;
+    width: 680px;
+    height: 430px;
+    border: 2px;
+    border-radius: 14px;
     border-color: @border-col;
     background-color: @bg-col;
     transparency: "real";
 }
 
 mainbox {
+    orientation: vertical;
+    children: [ "inputbar", "mode-switcher", "listview" ];
+    padding: 18px;
+    spacing: 12px;
     background-color: transparent;
-    border-radius: 10px;
+    border-radius: 14px;
 }
 
 inputbar {
-    children: [prompt,entry];
-    background-color: @bg-col;
-    border-radius: 5px;
-    padding: 2px;
+    children: [ "prompt", "entry" ];
+    padding: 9px;
+    border-radius: 10px;
+    background-color: @surface-col;
+    border: 1px;
+    border-color: @accent-soft-col;
 }
 
 prompt {
-    background-color: @blue;
-    padding: 6px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background-color: @accent-col;
     text-color: @bg-col;
-    border-radius: 3px;
-    margin: 20px 0px 0px 20px;
-}
-
-textbox-prompt-colon {
-    expand: false;
-    str: ":";
 }
 
 entry {
-    padding: 6px;
-    margin: 20px 0px 0px 10px;
+    padding: 5px 8px;
     text-color: @fg-col;
-    background-color: @bg-col;
+    background-color: transparent;
+    placeholder-color: @muted-col;
 }
 
 listview {
-    border: 0px 0px 0px;
-    padding: 6px 0px 0px;
-    margin: 10px 0px 0px 20px;
     columns: 2;
     lines: 5;
-    background-color: @bg-col;
+    fixed-height: false;
+    dynamic: true;
+    cycle: true;
+    spacing: 8px;
+    background-color: transparent;
 }
 
 element {
-    padding: 5px;
-    background-color: @bg-col;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background-color: transparent;
+    border: 1px;
+    border-color: transparent;
     text-color: @fg-col;
 }
 
-element-icon {
-    size: 25px;
+element normal active,
+element alternate active {
+    background-color: @accent-soft-col;
+    text-color: @accent-col;
 }
 
 element selected {
-    background-color:  @selected-col ;
-    text-color: @blue  ;
+    background-color: @selected-col;
+    text-color: @accent-col;
+    border-color: @accent-col;
+}
+
+element-icon {
+    size: 24px;
+    margin: 0px 8px 0px 0px;
+}
+
+element-text {
+    vertical-align: 0.5;
+    horizontal-align: 0.0;
 }
 
 mode-switcher {
-    spacing: 0;
-  }
+    spacing: 8px;
+}
 
 button {
-    padding: 10px;
-    background-color: @bg-col-light;
-    text-color: @grey;
-    vertical-align: 0.5; 
+    padding: 8px 12px;
+    border-radius: 10px;
+    background-color: @surface-col;
+    text-color: @muted-col;
+    border: 1px;
+    border-color: transparent;
+    vertical-align: 0.5;
     horizontal-align: 0.5;
 }
 
 button selected {
-  background-color: @bg-col;
-  text-color: @blue;
+    background-color: @selected-col;
+    text-color: @accent-col;
+    border-color: @accent-col;
 }
 
 message {
-    background-color: @bg-col-light;
-    margin: 2px;
-    padding: 2px;
-    border-radius: 5px;
+    background-color: @surface-col;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px;
+    border-color: @accent-soft-col;
 }
 
 textbox {
-    padding: 6px;
-    margin: 20px 0px 0px 20px;
-    text-color: @blue;
-    background-color: @bg-col-light;
+    text-color: @fg-col;
+    background-color: transparent;
 }

@@ -30,5 +30,5 @@ done
 
 case "${#connected[@]}" in
   0) printf ' on\n' ;;
-  *) printf ' on 󰐕 %s\n' "${#connected[@]}" ;;
+  *) printf ' on (%s)\n' "${#connected[@]}" ;;
 esac
