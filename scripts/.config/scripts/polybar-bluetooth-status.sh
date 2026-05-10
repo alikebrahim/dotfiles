@@ -11,7 +11,7 @@ fi
 
 if ! grep -q 'Powered: yes' /tmp/polybar-bluetooth-show.$$; then
   rm -f /tmp/polybar-bluetooth-show.$$
-  printf '󰂲\n'
+  printf '󰂲 off\n'
   exit 0
 fi
 rm -f /tmp/polybar-bluetooth-show.$$
@@ -29,7 +29,6 @@ for mac in "${paired[@]}"; do
 done
 
 case "${#connected[@]}" in
-  0) printf '\n' ;;
-  1) printf ' %s\n' "${connected[0]}" ;;
-  *) printf ' %s\n' "${#connected[@]}" ;;
+  0) printf ' on\n' ;;
+  *) printf ' on 󰐕 %s\n' "${#connected[@]}" ;;
 esac

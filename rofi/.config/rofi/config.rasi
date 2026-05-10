@@ -1,5 +1,5 @@
 configuration {
-    modi: "run,drun,window";
+    modi: "drun,window";
     icon-theme: "Papirus";
     show-icons: true;
     terminal: "wezterm";
@@ -8,7 +8,6 @@ configuration {
     disable-history: false;
     hide-scrollbar: true;
     display-drun: "   Apps ";
-    display-run: "   Run ";
     display-window: " 󱂬  Window ";
     sidebar-mode: true;
     kb-mode-next: "Shift+Right,Control+Tab";

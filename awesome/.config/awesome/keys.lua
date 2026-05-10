@@ -16,6 +16,7 @@ keys.globalkeys = gears.table.join(
   awful.key({ modkey, "Shift" }, "Return", function() awful.spawn(browser) end, { description = "open browser", group = "launcher" }),
   awful.key({ modkey }, "Tab", function() awful.spawn("rofi -show window") end, { description = "window switcher", group = "launcher" }),
   awful.key({ modkey }, "space", function() awful.spawn("rofi -show drun") end, { description = "application launcher", group = "launcher" }),
+  awful.key({ modkey }, "f", function() awful.spawn("nautilus") end, { description = "open files", group = "launcher" }),
   awful.key({ modkey }, "p", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-display-manager.sh") end, { description = "display manager", group = "launcher" }),
   awful.key({ modkey }, "u", function() awful.spawn("/home/alikebrahim/.config/scripts/wm-stabilize.sh") end, { description = "refresh monitors/UI", group = "awesome" }),
   awful.key({ modkey }, "Escape", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-power-menu.sh") end, { description = "power menu", group = "awesome" }),
@@ -25,8 +26,6 @@ keys.globalkeys = gears.table.join(
   awful.key({ modkey, "Shift" }, "b", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-bluetooth-menu.sh") end, { description = "bluetooth controls", group = "launcher" }),
   awful.key({ modkey }, "grave", function() require("dynamism").term_scratch:toggle() end, { description = "toggle scratchpad", group = "launcher" }),
 
-  -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
-  awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
   -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
   awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
   awful.key({ modkey }, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh full") end, { description = "full screenshot", group = "screenshots" }),
@@ -125,12 +124,6 @@ end
 -- Client Keys
 -- -----------------------------------------------------------------------------
 keys.clientkeys = gears.table.join(
-    awful.key({ modkey }, "f", function(c)
-        c.fullscreen = not c.fullscreen
-        c.ontop = c.fullscreen
-        c.border_width = c.fullscreen and 0 or beautiful.border_width
-        c:raise()
-    end, { description = "toggle fullscreen", group = "client" }),
     awful.key({ modkey }, "m", function(c)
         c.maximized = not c.maximized
         c.border_width = c.maximized and 0 or beautiful.border_width
