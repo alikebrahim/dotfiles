@@ -145,11 +145,11 @@ zstyle ':fzf-tab:*' fzf-flags --bind ctrl-y:accept # ctrl+y for accepting fzf-ta
 # ALIASES
 # -------
 ## Config aliases
-alias zconf="vim ~/.zshrc"
+alias zconf="nvim ~/.zshrc"
 alias zsrc="source ~/.zshrc"
-alias vconf="vim ~/.config/nvim"
-alias wezconf="vim ~/.config/wezterm/wezterm.lua"
-alias tconf="vim ~/.tmux.conf"
+alias vconf="nvim ~/.config/nvim"
+alias wconf="nvim ~/.config/wezterm/wezterm.lua"
+alias tconf="nvim ~/.tmux.conf"
 
 ## FILE SYSTEM NAVIGATION AND LISTING
 # -----------------------------------
@@ -157,6 +157,7 @@ alias ls="eza"
 alias ll="eza --color=always --long --git --icons=always"
 alias la="eza --color=always --long --all --git --icons=always"
 alias lt="eza --tree"
+alias yz="yazi"
 
 ## Tool aliases
 alias awk="gawk"
@@ -227,6 +228,14 @@ note_tab_complete_widget() {
 zle -N note_tab_complete_widget
 bindkey '^I' note_tab_complete_widget
 
+# yazi
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	command yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
+	command rm -f -- "$tmp"
+}
 # . "$HOME/.atuin/bin/env"
 #
 # eval "$(atuin init zsh)"
