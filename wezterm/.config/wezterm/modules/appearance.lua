@@ -7,7 +7,7 @@ function M.apply(config)
 	config.default_cursor_style = "SteadyBar"
 	-- Font configuration
 	config.font = wezterm.font("JetBrains Mono", { weight = "Regular", italic = false })
-	config.font_size = 12
+	config.font_size = 13
 
 	-- Window appearance
 	config.window_decorations = "RESIZE"

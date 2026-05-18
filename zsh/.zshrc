@@ -37,6 +37,8 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 ## conda
 export PATH="/home/alikebrahim/miniconda3/bin:$PATH"
+## EDITOR
+export EDITOR="nvim"
 
 # TOOL CONFIG
 # ***********

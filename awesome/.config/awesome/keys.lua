@@ -4,6 +4,19 @@ local beautiful = require("beautiful")
 
 local keys = {}
 
+-- Helper function to get all tiled clients sorted by X coordinate (left to right)
+local function get_all_tiled_clients_sorted_by_x()
+	local clients = {}
+	for s in screen do
+		for _, c in pairs(s.tiled_clients) do
+			table.insert(clients, c)
+		end
+	end
+	table.sort(clients, function(a, b) return a:geometry().x < b:geometry().x end)
+	return clients
+end
+
+
 -- -----------------------------------------------------------------------------
 -- Global Keys
 -- -----------------------------------------------------------------------------
@@ -32,43 +45,92 @@ keys.globalkeys = gears.table.join(
 
   awful.key({ modkey, "Shift" }, "space", function () awful.layout.inc( 1) end, {description = "select next layout", group = "layout"}),
 
-  -- Navigation (Pop!_OS / Vim style with multi-screen support)
+  -- Navigation (spatial focus across screens)
   awful.key({ modkey }, "h", function()
-      local c = client.focus
-      awful.client.focus.bydirection("left")
-      if client.focus == c or (client.focus and client.focus.type == "dock") then
-          awful.screen.focus_relative(-1)
-          local cls = awful.screen.focused().tiled_clients
-          if #cls > 0 then
-              table.sort(cls, function(a, b) return a:geometry().x > b:geometry().x end)
-              client.focus = cls[1]
+      local clients = get_all_tiled_clients_sorted_by_x()
+      local current = client.focus
+      
+      if not current or #clients == 0 then return end
+      
+      for i, c in ipairs(clients) do
+          if c == current then
+              if i > 1 then  -- Not leftmost, move to previous window
+                  client.focus = clients[i - 1]
+                  clients[i - 1]:raise()
+              end
+              return
           end
       end
-      if client.focus then client.focus:raise() end
-  end, {description = "focus left", group = "client"}),
+  end, {description = "focus left window (spatial)", group = "client"}),
 
   awful.key({ modkey }, "l", function()
-      local c = client.focus
-      awful.client.focus.bydirection("right")
-      if client.focus == c or (client.focus and client.focus.type == "dock") then
-          awful.screen.focus_relative(1)
-          local cls = awful.screen.focused().tiled_clients
-          if #cls > 0 then
-              table.sort(cls, function(a, b) return a:geometry().x < b:geometry().x end)
-              client.focus = cls[1]
+      local clients = get_all_tiled_clients_sorted_by_x()
+      local current = client.focus
+      
+      if not current or #clients == 0 then return end
+      
+      for i, c in ipairs(clients) do
+          if c == current then
+              if i < #clients then  -- Not rightmost, move to next window
+                  client.focus = clients[i + 1]
+                  clients[i + 1]:raise()
+              end
+              return
           end
       end
-      if client.focus then client.focus:raise() end
-  end, {description = "focus right", group = "client"}),
+  end, {description = "focus right window (spatial)", group = "client"}),
 
   awful.key({ modkey }, "k", function() awful.client.focus.bydirection("up"); if client.focus then client.focus:raise() end end, {description = "focus up", group = "client"}),
   awful.key({ modkey }, "j", function() awful.client.focus.bydirection("down"); if client.focus then client.focus:raise() end end, {description = "focus down", group = "client"}),
 
+  awful.key({ modkey, "Control" }, "h", function()
+      if screen.count() > 1 then
+          awful.screen.focus_relative(-1)
+          local cls = awful.screen.focused().tiled_clients
+          if #cls > 0 then
+              client.focus = cls[1]
+              cls[1]:raise()
+          end
+      end
+  end, {description = "focus previous screen", group = "screen"}),
+
+  awful.key({ modkey, "Control" }, "l", function()
+      if screen.count() > 1 then
+          awful.screen.focus_relative(1)
+          local cls = awful.screen.focused().tiled_clients
+          if #cls > 0 then
+              client.focus = cls[1]
+              cls[1]:raise()
+          end
+      end
+  end, {description = "focus next screen", group = "screen"}),
+
   awful.key({ modkey, "Control" }, "k", awful.tag.viewnext, {description = "view next workspace", group = "tag"}),
   awful.key({ modkey, "Control" }, "j", awful.tag.viewprev, {description = "view previous workspace", group = "tag"}),
 
-  awful.key({ modkey, "Shift" }, "h", function() if client.focus then client.focus:move_to_screen(client.focus.screen.index - 1) end end, {description = "move client to previous screen", group = "screen"}),
-  awful.key({ modkey, "Shift" }, "l", function() if client.focus then client.focus:move_to_screen(client.focus.screen.index + 1) end end, {description = "move client to next screen", group = "screen"}),
+  awful.key({ modkey, "Shift" }, "h", function()
+      -- Move focused window to left screen
+      if client.focus and screen.count() > 1 then
+          local current_screen = client.focus.screen
+          local target_screen = current_screen.index - 1
+          if target_screen < 1 then target_screen = screen.count() end
+          client.focus:move_to_screen(target_screen)
+          awful.screen.focus(target_screen)
+          if client.focus then client.focus:raise() end
+      end
+  end, {description = "move window to left screen", group = "screen"}),
+
+  awful.key({ modkey, "Shift" }, "l", function()
+      -- Move focused window to right screen
+      if client.focus and screen.count() > 1 then
+          local current_screen = client.focus.screen
+          local target_screen = current_screen.index + 1
+          if target_screen > screen.count() then target_screen = 1 end
+          client.focus:move_to_screen(target_screen)
+          awful.screen.focus(target_screen)
+          if client.focus then client.focus:raise() end
+      end
+  end, {description = "move window to right screen", group = "screen"}),
 
   awful.key({ modkey, "Shift" }, "k", function()
       if client.focus then
