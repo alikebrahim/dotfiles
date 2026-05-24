@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Obsidian
-Exec=/home/alikebrahim/Apps/obsidian %u 
+Exec=/home/alikebrahim/.local/share/obsidian --no-sandbox %u 
 Terminal=false
 Type=Application
 Icon=/home/alikebrahim/.local/share/icons/obsidian-icon.png

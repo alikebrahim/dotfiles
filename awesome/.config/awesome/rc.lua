@@ -14,7 +14,7 @@ beautiful.init(require("theme"))
 -- Core settings
 -- -----------------------------------------------------------------------------
 terminal = "wezterm"
-browser = "google-chrome-stable --new-window"
+browser = "google-chrome --new-window"
 editor = os.getenv("EDITOR") or "nano"
 modkey = "Mod4"
 

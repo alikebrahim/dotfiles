@@ -33,20 +33,20 @@ if ! pgrep -u "$USER" -x flameshot >/dev/null 2>&1; then
 fi
 
 case "$mode" in
-  gui|region|edit)
-    flameshot_x11 gui --path "$screenshot_dir"
-    ;;
-  full)
-    file="$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
-    flameshot_x11 full --path "$file" --clipboard
-    notify-send "Screenshot saved" "$file" -i "$file" -t 3000
-    ;;
-  copy)
-    flameshot_x11 full --clipboard
-    notify-send "Screenshot copied" "Full screenshot copied to clipboard" -t 2000
-    ;;
-  *)
-    notify-send -u critical "Screenshot helper" "Unknown mode: $mode"
-    exit 2
-    ;;
+gui | region | edit)
+  flameshot_x11 gui --path "$screenshot_dir"
+  ;;
+full)
+  file="$screenshot_dir/screenshot-$(date +%Y%m%d-%H%M%S).png"
+  flameshot_x11 full --path "$file" --clipboard
+  notify-send "Screenshot saved" "$file" -i "$file" -t 3000
+  ;;
+copy)
+  flameshot_x11 full --clipboard
+  notify-send "Screenshot copied" "Full screenshot copied to clipboard" -t 2000
+  ;;
+*)
+  notify-send -u critical "Screenshot helper" "Unknown mode: $mode"
+  exit 2
+  ;;
 esac

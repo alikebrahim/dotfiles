@@ -200,36 +200,6 @@ _fzf_comprun() {
   esac
 }
 
-note_tab_complete_widget() {
-  emulate -L zsh
-  setopt localoptions noshwordsplit
-
-  local -a parts
-  parts=(${(z)BUFFER})
-
-  if [[ "${parts[1]}" == "note" ]]; then
-    local selection
-    selection="$(note-tab-picker.sh)"
-
-    if [[ -n "$selection" ]]; then
-      BUFFER="note ${(q)selection}"
-      CURSOR=${#BUFFER}
-    fi
-
-    zle redisplay
-    return 0
-  fi
-
-  if (( ${+widgets[fzf-tab-complete]} )); then
-    zle fzf-tab-complete
-  else
-    zle expand-or-complete
-  fi
-}
-
-zle -N note_tab_complete_widget
-bindkey '^I' note_tab_complete_widget
-
 # yazi
 function y() {
 	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
@@ -264,3 +234,5 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+# . "$HOME/.local/share/../bin/env"

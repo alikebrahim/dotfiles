@@ -51,33 +51,52 @@ supports_mode() {
 }
 
 apply_layout() {
-  # 1. Reset/Force modes for all connected monitors to 1080p first.
-  for output in "${connected[@]}"; do
-    if supports_mode "$output" "$TARGET_MODE"; then
-      xrandr --output "$output" --mode "$TARGET_MODE"
+  # Build one explicit RandR transaction so stale output positions cannot leave gaps.
+  # Desired two-screen layout:
+  #   internal: 1920x1080+0+0
+  #   external: 1920x1080+1920+0, primary
+  local args=()
+  local x=0
+  local output
+
+  if [ -n "$internal" ]; then
+    args+=(--output "$internal")
+    if supports_mode "$internal" "$TARGET_MODE"; then
+      args+=(--mode "$TARGET_MODE")
     else
-      xrandr --output "$output" --auto
+      args+=(--auto)
     fi
+    args+=(--pos "${x}x0")
+    x=$((x + 1920))
+  fi
+
+  if [ -n "$external" ]; then
+    args+=(--output "$external" --primary)
+    if supports_mode "$external" "$TARGET_MODE"; then
+      args+=(--mode "$TARGET_MODE")
+    else
+      args+=(--auto)
+    fi
+    args+=(--pos "${x}x0")
+    x=$((x + 1920))
+  elif [ -n "$internal" ]; then
+    args+=(--output "$internal" --primary)
+  fi
+
+  for output in "${connected[@]}"; do
+    [ "$output" = "$internal" ] && continue
+    [ "$output" = "$external" ] && continue
+    args+=(--output "$output")
+    if supports_mode "$output" "$TARGET_MODE"; then
+      args+=(--mode "$TARGET_MODE")
+    else
+      args+=(--auto)
+    fi
+    args+=(--pos "${x}x0")
+    x=$((x + 1920))
   done
 
-  # 2. Apply primary status and positioning.
-  if [ -n "$external" ]; then
-    xrandr --output "$external" --primary
-
-    if [ -n "$internal" ]; then
-      xrandr --output "$internal" --left-of "$external"
-    fi
-
-    previous="$external"
-    for output in "${connected[@]}"; do
-      [ "$output" = "$external" ] && continue
-      [ "$output" = "$internal" ] && continue
-      xrandr --output "$output" --right-of "$previous"
-      previous="$output"
-    done
-  elif [ -n "$internal" ]; then
-    xrandr --output "$internal" --primary
-  fi
+  xrandr "${args[@]}"
 }
 
 # Apply twice because PRIME/RandR provider changes can settle asynchronously.
