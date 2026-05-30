@@ -12,7 +12,7 @@ function M.apply(config)
 
 	-- Window appearance
 	config.window_decorations = "RESIZE"
-	config.window_background_opacity = 0.87
+	config.window_background_opacity = 0.80
 	config.window_close_confirmation = "NeverPrompt"
 	config.window_padding = {
 		left = 3,
@@ -34,19 +34,7 @@ function M.apply(config)
 	-- config.color_scheme = "3024 (dark) (terminal.sexy)" -- **
 	-- config.color_scheme = "Aardvark Blue"
 	-- config.color_scheme = "Abernathy" -- ***
-	config.color_scheme = "Aci (Gogh)" -- *** nice for readability
-	-- config.color_scheme = "Aco (Gogh)" -- **
-	-- config.color_scheme = "Andromeda" -- *
-	-- config.color_scheme = "Apple System Colors" -- *
-	-- config.color_scheme = "Argonaut" -- *
-	-- config.color_scheme = "Atelierseaside (dark) (terminal.sexy)" -- **
-	-- config.color_scheme = "ayu" -- *** nice for readability, light on the eyes
-	-- config.color_scheme = "Blue Matrix"
-	-- config.color_scheme = "Builtin Dark"
-	-- config.color_scheme = "Count Von Count (terminal.sexy)"
-	-- config.color_scheme = "deep" -- **
-	-- config.color_scheme = "HaX0R_BLUE" -- **** soothing
-	-- config.color_scheme = "Icy Dark (base16)"
+	config.color_scheme = "Aci (Gogh)"
 	-- Retro tab bar theme, ported from ~/.tmux/themes.
 	-- Available: amber-crt, green-phosphor, orange-gas-plasma,
 	-- commodore-64, cga-cyan-magenta, mac-classic, blue-matrix.

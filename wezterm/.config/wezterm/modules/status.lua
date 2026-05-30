@@ -1,80 +1,133 @@
+local retro_themes = require("modules.retro_themes")
+
 local M = {}
 
--- Helper function to get the basename from a path
-local function basename(s)
-    return string.gsub(s, "(.*[/\\])(.*)", "%2")
+-- Helper function to compact a path for top-bar display
+local function compact_path(path)
+    if not path or path == "" then
+        return "~"
+    end
+
+    local home = os.getenv("HOME")
+    if home and string.sub(path, 1, #home) == home then
+        path = "~" .. string.sub(path, #home + 1)
+    end
+
+    local max_len = 36
+    if #path > max_len then
+        path = "…" .. string.sub(path, #path - max_len + 2)
+    end
+
+    return path
 end
 
--- Status bar colors
-local COLORS = {
-    WORKSPACE = "#f7768e",
-    KEY_TABLE = "#7dcfff",
-    LEADER = "#bb9af7",
-    COMMAND = "#e0af68",
-}
+local function clamp_title(s, max_width)
+    if not s or s == "" then
+        return "shell"
+    end
+    if #s <= max_width then
+        return s
+    end
+    return string.sub(s, 1, math.max(1, max_width - 1)) .. "…"
+end
+
+local function palette()
+    return retro_themes.get_active()
+end
 
 function M.setup(wezterm)
+    wezterm.on("format-tab-title", function(tab, tabs, panes, config, hover, max_width)
+        local colors = palette()
+        local title = tab.tab_title
+
+        if not title or title == "" then
+            title = tab.active_pane and tab.active_pane.title or "shell"
+        end
+
+        local prefix = tostring(tab.tab_index + 1) .. ":"
+        local padding = 2
+        local overhead = #prefix + padding
+        local desired_width = math.max(max_width, 14)
+        desired_width = math.min(desired_width, config.tab_max_width or desired_width)
+        title = clamp_title(title, desired_width - overhead)
+
+        local bg = colors.inactive_bg
+        local fg = colors.muted
+        local intensity = "Normal"
+
+        if tab.is_active then
+            bg = colors.active
+            fg = colors.background
+            intensity = "Bold"
+        elseif hover then
+            bg = colors.selection_bg
+            fg = colors.foreground
+        end
+
+        return {
+            { Background = { Color = bg } },
+            { Foreground = { Color = fg } },
+            { Attribute = { Intensity = intensity } },
+            { Text = " " .. prefix .. title .. " " },
+        }
+    end)
+
     wezterm.on("update-status", function(window, pane)
+        local colors = palette()
+
         -- Workspace name or current mode
         local stat = window:active_workspace()
-        local stat_color = COLORS.WORKSPACE
+        local stat_color = colors.active
         
         if window:active_key_table() then
             stat = window:active_key_table()
-            stat_color = COLORS.KEY_TABLE
+            stat_color = colors.metric
         end
         
         if window:leader_is_active() then
             stat = "LDR"
-            stat_color = COLORS.LEADER
+            stat_color = colors.alert
         end
 
-        -- Current working directory
+        -- Active pane current working directory
         local cwd = pane:get_current_working_dir()
         if cwd then
             if type(cwd) == "userdata" then
-                cwd = basename(cwd.file_path)
+                cwd = compact_path(cwd.file_path)
             else
                 -- 20230712-072601-f4abf8fd or earlier version
-                cwd = basename(cwd)
+                cwd = compact_path(cwd)
             end
         else
-            cwd = ""
+            cwd = "~"
         end
 
-        -- Current command
-        local cmd = pane:get_foreground_process_name()
-        -- CWD and CMD could be nil (e.g. viewing log using Ctrl-Alt-l)
-        cmd = cmd and basename(cmd) or ""
+        -- Time
+        local time = wezterm.strftime("%H:%M")
 
-        -- Time and date
-        local time = "@" .. wezterm.strftime("%H:%M:%S")
-        local day = wezterm.strftime("%a")
-        local month = wezterm.strftime("%b %-d")
-        local date = day .. ", " .. month
-
-        -- Left status (left of the tab line)
+        -- Left status: classic bracketed workspace/mode label.
         window:set_left_status(wezterm.format({
+            { Foreground = { Color = colors.muted } },
+            { Text = " [" },
             { Foreground = { Color = stat_color } },
-            { Text = "  " },
-            { Text = wezterm.nerdfonts.oct_table .. "  " .. stat },
-            { Text = " |" },
+            { Attribute = { Intensity = "Bold" } },
+            { Text = stat },
+            "ResetAttributes",
+            { Foreground = { Color = colors.muted } },
+            { Text = "] |" },
         }))
 
-        -- Right status
+        -- Right status: classic text, active pane CWD, no modern icons.
         window:set_right_status(wezterm.format({
-            -- Wezterm has a built-in nerd fonts
-            -- https://wezfurlong.org/wezterm/config/lua/wezterm/nerdfonts.html
-            { Text = wezterm.nerdfonts.md_folder .. "  " .. cwd },
-            { Text = " | " },
-            { Foreground = { Color = COLORS.COMMAND } },
-            { Text = wezterm.nerdfonts.fa_code .. "  " .. cmd },
-            "ResetAttributes",
-            { Text = " | " },
-            {
-                Text = wezterm.nerdfonts.fa_clock_o .. " " .. date .. " " .. time,
-            },
-            { Text = "  " },
+            { Foreground = { Color = colors.muted } },
+            { Text = " [" },
+            { Foreground = { Color = colors.metric } },
+            { Text = cwd },
+            { Foreground = { Color = colors.muted } },
+            { Text = "] :: " },
+            { Foreground = { Color = colors.foreground } },
+            { Text = time },
+            { Text = " " },
         }))
     end)
 end

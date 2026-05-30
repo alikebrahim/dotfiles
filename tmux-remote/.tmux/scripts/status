@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Compact host-aware status for tmux.
+# Shows CPU temperature, root disk use, optional Pi SSD use, and 1-minute load.
+
+set -u
+
+host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf unknown)"
+
+# Temperature
+if [[ -r /sys/class/thermal/thermal_zone0/temp ]]; then
+  read -r temp_milli < /sys/class/thermal/thermal_zone0/temp
+  temp="$((temp_milli / 1000))°C"
+else
+  temp="--°C"
+fi
+
+# Root filesystem usage
+root_use="--"
+if command -v df >/dev/null 2>&1; then
+  root_use="$(df -hP / 2>/dev/null | awk 'NR==2 {print $5}')"
+fi
+
+# External SSD usage, Pi only
+ssd_segment=""
+if [[ "$host" == "pi" ]]; then
+  ssd_mount="/mnt/portable_ssd"
+  ssd_use="off"
+
+  if command -v mountpoint >/dev/null 2>&1 && mountpoint -q "$ssd_mount"; then
+    ssd_use="$(df -hP "$ssd_mount" 2>/dev/null | awk 'NR==2 {print $5}')"
+  elif [[ -d "$ssd_mount" ]]; then
+    # Fallback for minimal systems where mountpoint may be unavailable.
+    ssd_use="$(df -hP "$ssd_mount" 2>/dev/null | awk 'NR==2 {print $5}')"
+  fi
+
+  ssd_segment=" ssd $ssd_use"
+fi
+
+# Load average
+if [[ -r /proc/loadavg ]]; then
+  read -r load _ < /proc/loadavg
+else
+  load="--"
+fi
+
+printf 'temp %s / %s%s load %s' "$temp" "$root_use" "$ssd_segment" "$load"

@@ -68,9 +68,10 @@ note_fzf() {
         --height 70% --border \
         --prompt 'note> ' \
         --header 'CTRL-F: filenames | CTRL-G: content' \
-        --preview 'file="{1}"; line="{2}"; if [ -z "$line" ]; then bat --color=always --line-range :100 "$file"; else start=$(($line>20?$line-20:1)); end=$(($line+20)); bat --color=always --highlight-line "$line" --line-range "${start}:${end}" "$file"; fi' \
-        --bind 'ctrl-g:change-prompt(content> )+reload(rg --line-number --no-heading --smart-case . | sed "s|^\\./||")' \
-        --bind 'ctrl-f:change-prompt(note> )+reload(fd --type f --extension md)' \
+        --preview 'bat --color=always --line-range :100 {}' \
+        --preview-window 'right,60%,wrap' \
+        --bind 'ctrl-g:change-prompt(content> )+reload(rg --line-number --no-heading --color=never --smart-case .)+change-preview(bat --color=always --highlight-line {2} {1})+change-preview-window(right,60%,+{2}+3/3,~3)' \
+        --bind 'ctrl-f:change-prompt(note> )+reload(fd --type f --extension md)+change-preview(bat --color=always --line-range :100 {})+change-preview-window(right,60%,wrap)' \
         --delimiter ':'
   )
 

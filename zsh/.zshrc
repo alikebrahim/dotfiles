@@ -179,6 +179,59 @@ eval "$(zoxide init --cmd cd zsh)"
 
 # FUNCTIONS
 # ---------
+## WezTerm tab title integration for ssh
+_wezterm_ssh_host_from_args() {
+  emulate -L zsh
+  local arg
+  local -a args
+  args=("$@")
+
+  while (( $#args )); do
+    arg="${args[1]}"
+    shift args
+
+    case "$arg" in
+      --)
+        (( $#args )) && print -r -- "${args[1]}"
+        return
+        ;;
+      -[46AaCfGgKkMNnqsTtVvXxYy])
+        ;;
+      -[BbcDEeFIiJLlmOoPpQRSWw])
+        (( $#args )) && shift args
+        ;;
+      -*)
+        ;;
+      *)
+        print -r -- "$arg"
+        return
+        ;;
+    esac
+  done
+}
+
+ssh() {
+  emulate -L zsh
+  local raw_host host exit_code
+
+  raw_host="$(_wezterm_ssh_host_from_args "$@")"
+  host="${raw_host##*@}"
+  host="${host%%:*}"
+
+  if [[ -n "$WEZTERM_PANE" && -n "$host" && ${+commands[wezterm]} -eq 1 ]]; then
+    command wezterm cli set-tab-title "ssh:${host}" >/dev/null 2>&1 || true
+  fi
+
+  command ssh "$@"
+  exit_code=$?
+
+  if [[ -n "$WEZTERM_PANE" && ${+commands[wezterm]} -eq 1 ]]; then
+    command wezterm cli set-tab-title "" >/dev/null 2>&1 || true
+  fi
+
+  return $exit_code
+}
+
 ## fzf
 _fzf_compgen_path() {
   fd --hidden --exclude .git . "$1"
@@ -236,3 +289,9 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # . "$HOME/.local/share/../bin/env"
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<

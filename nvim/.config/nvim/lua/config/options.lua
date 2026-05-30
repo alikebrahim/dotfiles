@@ -2,6 +2,27 @@
 -- Default options that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/options.lua
 -- Add any additional options here
 local opt = vim.opt
+
+local is_remote = vim.env.SSH_TTY ~= nil or vim.env.SSH_CONNECTION ~= nil
+
+if is_remote then
+  vim.g.clipboard = {
+    name = "OSC 52",
+    copy = {
+      ["+"] = require("vim.ui.clipboard.osc52").copy("+"),
+      ["*"] = require("vim.ui.clipboard.osc52").copy("*"),
+    },
+    paste = {
+      ["+"] = function()
+        return { vim.fn.split(vim.fn.getreg(""), "\n"), vim.fn.getregtype("") }
+      end,
+      ["*"] = function()
+        return { vim.fn.split(vim.fn.getreg(""), "\n"), vim.fn.getregtype("") }
+      end,
+    },
+  }
+end
+
 opt.breakindent = true
 opt.wrap = true
 opt.clipboard = "unnamedplus"

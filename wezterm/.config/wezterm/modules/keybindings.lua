@@ -46,6 +46,18 @@ function M.apply(config)
 	table.insert(keys, { key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(-1) })
 	table.insert(keys, { key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(1) })
 	table.insert(keys, { key = "t", mods = "CTRL|SHIFT", action = act.ShowTabNavigator })
+	table.insert(keys, {
+		key = ",",
+		mods = "LEADER",
+		action = act.PromptInputLine({
+			description = "Rename tab",
+			action = wezterm.action_callback(function(window, pane, line)
+				if line and #line > 0 then
+					window:active_tab():set_title(line)
+				end
+			end),
+		}),
+	})
 	table.insert(
 		keys,
 		{ key = "m", mods = "CTRL|SHIFT", action = act.ActivateKeyTable({ name = "move_tab", one_shot = false }) }

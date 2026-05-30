@@ -9,7 +9,7 @@ function dynamism.setup()
     -- 1. Helper: Scratchpad Utility
     -- Pressing Mod + ` (grave) will toggle a persistent dropdown terminal.
     dynamism.term_scratch = bling.module.scratchpad {
-        command = "wezterm start --class scratchpad",
+        command = "wezterm start --class scratchpad -- nvim +startinsert /tmp/file$(date +%Y%m%d-%H%M%S)",
         rule = { class = "scratchpad" },
         sticky = true,
         autoclose = true,

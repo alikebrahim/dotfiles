@@ -4,16 +4,202 @@ local beautiful = require("beautiful")
 
 local keys = {}
 
--- Helper function to get all tiled clients sorted by X coordinate (left to right)
-local function get_all_tiled_clients_sorted_by_x()
-	local clients = {}
-	for s in screen do
-		for _, c in pairs(s.tiled_clients) do
-			table.insert(clients, c)
-		end
-	end
-	table.sort(clients, function(a, b) return a:geometry().x < b:geometry().x end)
-	return clients
+-- Spatial focus helpers.
+--
+-- Policy:
+--   - tiled clients only: floating clients do not participate;
+--   - visible/current-tag clients only: no jumping to other workspaces;
+--   - minimized clients are ignored;
+--   - maximized tiled clients still participate, but h/l from a maximized
+--     client jumps to the previous/next screen immediately.
+local function screen_sort_key(s)
+    local g = s.geometry
+    return g.x, g.y, s.index
+end
+
+local function sorted_screens()
+    local screens = {}
+    for s in screen do
+        table.insert(screens, s)
+    end
+
+    table.sort(screens, function(a, b)
+        local ax, ay, ai = screen_sort_key(a)
+        local bx, by, bi = screen_sort_key(b)
+
+        if ax ~= bx then return ax < bx end
+        if ay ~= by then return ay < by end
+        return ai < bi
+    end)
+
+    return screens
+end
+
+local function client_sort_key(c)
+    local g = c:geometry()
+    return g.x, g.y, c.window
+end
+
+local function is_spatial_focus_client(c)
+    return c
+        and c.valid
+        and c.type ~= "desktop"
+        and c.type ~= "dock"
+        and not c.floating
+        and not c.minimized
+        and c:isvisible()
+end
+
+local function sorted_spatial_clients_for_screen(s)
+    local clients = {}
+
+    for _, c in ipairs(client.get()) do
+        if c.screen == s and is_spatial_focus_client(c) then
+            table.insert(clients, c)
+        end
+    end
+
+    table.sort(clients, function(a, b)
+        local ax, ay, aw = client_sort_key(a)
+        local bx, by, bw = client_sort_key(b)
+
+        if ax ~= bx then return ax < bx end
+        if ay ~= by then return ay < by end
+        return aw < bw
+    end)
+
+    return clients
+end
+
+local function get_all_spatial_clients_sorted()
+    local clients = {}
+
+    for _, s in ipairs(sorted_screens()) do
+        for _, c in ipairs(sorted_spatial_clients_for_screen(s)) do
+            table.insert(clients, c)
+        end
+    end
+
+    return clients
+end
+
+local function focus_client(c)
+    if not c or not c.valid then return end
+
+    client.focus = c
+    awful.screen.focus(c.screen)
+    c:raise()
+end
+
+local function focus_screen_edge_client(from_screen, direction)
+    local screens = sorted_screens()
+    if #screens == 0 then return false end
+
+    local current_index = 1
+    for i, s in ipairs(screens) do
+        if s == from_screen then
+            current_index = i
+            break
+        end
+    end
+
+    for step = 1, #screens - 1 do
+        local target_index = current_index + (direction * step)
+        while target_index < 1 do target_index = target_index + #screens end
+        while target_index > #screens do target_index = target_index - #screens end
+
+        local clients = sorted_spatial_clients_for_screen(screens[target_index])
+        if #clients > 0 then
+            if direction > 0 then
+                focus_client(clients[1])
+            else
+                focus_client(clients[#clients])
+            end
+            return true
+        end
+    end
+
+    return false
+end
+
+local function focus_spatial(direction)
+    local current = client.focus
+    if not current or not current.valid then return end
+
+    if current.maximized then
+        if focus_screen_edge_client(current.screen, direction) then
+            return
+        end
+    end
+
+    local clients = get_all_spatial_clients_sorted()
+    if #clients == 0 then return end
+
+    for i, c in ipairs(clients) do
+        if c == current then
+            local target_index = i + direction
+            if target_index < 1 then target_index = #clients end
+            if target_index > #clients then target_index = 1 end
+
+            focus_client(clients[target_index])
+            return
+        end
+    end
+
+    -- If the current client does not participate, e.g. it is floating, fall back
+    -- to the nearest edge of the visible tiled set.
+    if direction > 0 then
+        focus_client(clients[1])
+    else
+        focus_client(clients[#clients])
+    end
+end
+
+local function view_workspace_relative_all_screens(direction)
+    local focused_client = client.focus
+    local focused_screen
+
+    if focused_client and focused_client.valid then
+        focused_screen = focused_client.screen
+    else
+        focused_screen = awful.screen.focused()
+    end
+
+    for s in screen do
+        if direction > 0 then
+            awful.tag.viewnext(s)
+        else
+            awful.tag.viewprev(s)
+        end
+    end
+
+    -- awful.autofocus reacts to tag selection via delayed callbacks. Restore
+    -- focus after those callbacks so multi-screen tag navigation doesn't settle
+    -- on whichever screen autofocus processed last.
+    gears.timer.delayed_call(function()
+        if not focused_screen or not focused_screen.valid then
+            return
+        end
+
+        if focused_client and focused_client.valid and focused_client:isvisible() then
+            focus_client(focused_client)
+            return
+        end
+
+        local c = awful.client.focus.history.get(focused_screen, 0, function(candidate)
+            return candidate
+                and candidate.valid
+                and candidate.screen == focused_screen
+                and candidate:isvisible()
+                and awful.client.focus.filter(candidate)
+        end)
+
+        if c then
+            focus_client(c)
+        else
+            awful.screen.focus(focused_screen)
+        end
+    end)
 end
 
 
@@ -47,38 +233,12 @@ keys.globalkeys = gears.table.join(
 
   -- Navigation (spatial focus across screens)
   awful.key({ modkey }, "h", function()
-      local clients = get_all_tiled_clients_sorted_by_x()
-      local current = client.focus
-      
-      if not current or #clients == 0 then return end
-      
-      for i, c in ipairs(clients) do
-          if c == current then
-              if i > 1 then  -- Not leftmost, move to previous window
-                  client.focus = clients[i - 1]
-                  clients[i - 1]:raise()
-              end
-              return
-          end
-      end
-  end, {description = "focus left window (spatial)", group = "client"}),
+      focus_spatial(-1)
+  end, {description = "focus previous tiled window/screen (spatial)", group = "client"}),
 
   awful.key({ modkey }, "l", function()
-      local clients = get_all_tiled_clients_sorted_by_x()
-      local current = client.focus
-      
-      if not current or #clients == 0 then return end
-      
-      for i, c in ipairs(clients) do
-          if c == current then
-              if i < #clients then  -- Not rightmost, move to next window
-                  client.focus = clients[i + 1]
-                  clients[i + 1]:raise()
-              end
-              return
-          end
-      end
-  end, {description = "focus right window (spatial)", group = "client"}),
+      focus_spatial(1)
+  end, {description = "focus next tiled window/screen (spatial)", group = "client"}),
 
   awful.key({ modkey }, "k", function() awful.client.focus.bydirection("up"); if client.focus then client.focus:raise() end end, {description = "focus up", group = "client"}),
   awful.key({ modkey }, "j", function() awful.client.focus.bydirection("down"); if client.focus then client.focus:raise() end end, {description = "focus down", group = "client"}),
@@ -105,8 +265,12 @@ keys.globalkeys = gears.table.join(
       end
   end, {description = "focus next screen", group = "screen"}),
 
-  awful.key({ modkey, "Control" }, "k", awful.tag.viewnext, {description = "view next workspace", group = "tag"}),
-  awful.key({ modkey, "Control" }, "j", awful.tag.viewprev, {description = "view previous workspace", group = "tag"}),
+  awful.key({ modkey, "Control" }, "k", function()
+      view_workspace_relative_all_screens(1)
+  end, {description = "view next workspace on all screens", group = "tag"}),
+  awful.key({ modkey, "Control" }, "j", function()
+      view_workspace_relative_all_screens(-1)
+  end, {description = "view previous workspace on all screens", group = "tag"}),
 
   awful.key({ modkey, "Shift" }, "h", function()
       -- Move focused window to left screen
@@ -193,7 +357,7 @@ keys.clientkeys = gears.table.join(
     awful.key({ modkey }, "q", function(c) c:kill() end, { description = "close", group = "client" }),
     awful.key({ modkey }, "t", awful.client.floating.toggle, 
               { description = "toggle floating", group = "client" }),
-    awful.key({ modkey, "Control" }, "t", function(c) awful.titlebar.toggle(c) end,
+    awful.key({ modkey, "Control", "Shift" }, "t", function(c) awful.titlebar.toggle(c) end,
               { description = "toggle titlebar", group = "client" })
 )
 
