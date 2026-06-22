@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Blender
-Exec=/home/alikebrahim/Apps/blender/blender %u 
+Exec=/usr/bin/blender %u 
 Terminal=false
 Type=Application
 Icon=/home/alikebrahim/.local/share/icons/blender.png

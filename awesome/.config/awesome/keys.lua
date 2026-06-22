@@ -218,7 +218,7 @@ keys.globalkeys = gears.table.join(
   awful.key({ modkey }, "p", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-display-manager.sh") end, { description = "display manager", group = "launcher" }),
   awful.key({ modkey }, "u", function() awful.spawn("/home/alikebrahim/.config/scripts/wm-stabilize.sh") end, { description = "refresh monitors/UI", group = "awesome" }),
   awful.key({ modkey }, "Escape", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-power-menu.sh") end, { description = "power menu", group = "awesome" }),
-  awful.key({ modkey, "Control" }, "t", function() awful.spawn("/home/alikebrahim/.dotfiles/bin/theme-select") end, { description = "theme selector", group = "launcher" }),
+  awful.key({ modkey, "Control" }, "t", function() awful.spawn("/home/alikebrahim/.dotfiles/awesomewm-bin/theme-select") end, { description = "theme selector", group = "launcher" }),
   awful.key({ modkey, "Shift" }, "a", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-audio-menu.sh") end, { description = "audio controls", group = "launcher" }),
   awful.key({ modkey, "Shift" }, "w", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-wifi-menu.sh") end, { description = "wi-fi controls", group = "launcher" }),
   awful.key({ modkey, "Shift" }, "b", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-bluetooth-menu.sh") end, { description = "bluetooth controls", group = "launcher" }),

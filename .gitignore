@@ -2,3 +2,10 @@ CLAUDE.md
 nvim/.config/nvim/lazy-lock.json
 .stfolder
 
+# SSH operational data (config is tracked, keys/known_hosts are not)
+ssh/**/.ssh/authorized_keys
+ssh/**/.ssh/known_hosts
+
+# Syncthing conflict files
+*.sync-conflict-*
+

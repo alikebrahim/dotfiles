@@ -1,0 +1,4 @@
+.git
+my-bin/.local/state
+my-bin/.local/share
+.hermes-tmp*

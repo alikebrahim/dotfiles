@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=GIMP
-Exec=/home/alikebrahim/Apps/GIMP %u 
+Exec=/usr/bin/gimp
 Terminal=false
 Type=Application
 Icon=/home/alikebrahim/.local/share/icons/GIMP.png

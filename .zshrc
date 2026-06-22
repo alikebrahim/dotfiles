@@ -35,6 +35,8 @@ eval "$(pyenv init -)"
 ## NVM
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+## conda
+export PATH="/home/alikebrahim/miniconda3/bin:$PATH"
 ## EDITOR
 export EDITOR="nvim"
 
@@ -263,35 +265,35 @@ function y() {
 #
 # eval "$(atuin init zsh)"
 
-# Cross-machine local developer tools
-# Uses $HOME only, so it works across hostmaster, Fedora machines, and future user names.
-_add_path_once() {
-  emulate -L zsh
-  local dir="$1"
-
-  [[ -d "$dir" ]] || return 0
-
-  case ":$PATH:" in
-    *":$dir:"*) ;;
-    *) export PATH="$dir:$PATH" ;;
-  esac
-}
-
-# Miniconda
-if [[ -d "$HOME/miniconda3/bin" ]]; then
-  _add_path_once "$HOME/miniconda3/bin"
-fi
-
 # pnpm
 export PNPM_HOME="/home/alikebrahim/.local/share/pnpm"
 case ":$PATH:" in
-  *":$PNPM_HOME/bin:"*) ;;
-  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
 
-# bcode
-export PATH=/home/alikebrahim/.bcode/bin:$PATH
 
 # opencode
 export PATH=/home/alikebrahim/.opencode/bin:$PATH
+
+# bun completions
+[ -s "/home/alikebrahim/.bun/_bun" ] && source "/home/alikebrahim/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# . "$HOME/.local/share/../bin/env"
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+fpath=(~/.grok/completions/zsh $fpath)
+autoload -Uz compinit && compinit -C
+# <<< grok installer <<<
+#
+export ENTE_CLI_SECRETS_PATH=/home/pi/.ente/.secrets.txt
