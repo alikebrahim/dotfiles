@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=Blender
-Exec=/usr/bin/blender %u 
+Exec=blender %u
 Terminal=false
 Type=Application
-Icon=/home/alikebrahim/.local/share/icons/blender.png
+Icon=blender
 StartupWMClass=blender
-Comment=blender
-Categories=Office;
+Comment=3D modeling and animation
+Categories=Graphics;

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Name=GIMP
-Exec=/usr/bin/gimp
+Exec=gimp
 Terminal=false
 Type=Application
-Icon=/home/alikebrahim/.local/share/icons/GIMP.png
-StartupWMClass=GIMP
+Icon=gimp
+StartupWMClass=gimp
 Comment=GNU Image Manipulation Program
-Categories=Office;
+Categories=Graphics;

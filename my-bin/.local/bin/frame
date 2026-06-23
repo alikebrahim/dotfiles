@@ -1,0 +1,214 @@
+#!/bin/bash
+# frame — extract frames from a video as PNG
+# Usage: frame [-o <dir>] {first|last|at <timestamp>} <video_file>
+#        frame [-o <dir>] --list <video_file>
+set -euo pipefail
+
+NAME="$(basename "${0}")"
+
+usage() {
+    cat <<'EOF'
+Usage: frame [-o <dir>] {first|last|at <timestamp>} <video_file>
+       frame --list <video_file>
+
+  Extract a frame from a video and save it as PNG.
+
+Options:
+  -o, --output <dir>   Output directory (default: ~/Pictures/frames/<title>)
+
+Modes:
+  first                First frame of the video
+  last                 Last frame (seeks from end-of-file)
+  at <timestamp>       Frame at a specific time
+                       Formats:
+                         seconds        5.2, 90.567  (supports sub-second / ms precision)
+                         MM:SS          1:30        (whole seconds only)
+                         HH:MM:SS       0:02:30     (whole seconds only)
+                       Tip: use decimal seconds for millisecond precision (90.5 = 1:30.500)
+  --list               Show stream info and keyframe positions
+
+Output file names: first.png, last.png, at_5.2.png, at_1_30.png, etc.
+
+Examples:
+  frame first video.mp4
+  frame last video.mp4
+  frame at 1:30 video.mp4
+  frame -o /tmp/frames last video.mp4
+  frame --list video.mp4
+EOF
+    exit 1
+}
+
+# --- parse options (supports interleaved: -o can go anywhere) ---
+OUTDIR=""
+LIST_MODE=false
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -o|--output)
+            OUTDIR="$2"
+            shift 2
+            ;;
+        --list)
+            LIST_MODE=true
+            shift
+            ;;
+        --help|-h|help)
+            usage
+            ;;
+        --*)
+            echo "Error: unknown option '$1'" >&2
+            usage
+            ;;
+        -*)
+            echo "Error: unknown option '$1'" >&2
+            usage
+            ;;
+        *)
+            POSITIONAL+=("$1")
+            shift
+            ;;
+    esac
+done
+
+set -- "${POSITIONAL[@]}"
+# --- positional args ---
+if $LIST_MODE; then
+    VIDEO="${1:-}"
+    [ -n "${VIDEO}" ] || usage
+else
+    MODE="${1:-}"
+    case "${MODE}" in
+        first|last)
+            VIDEO="${2:-}"
+            [ -n "${VIDEO}" ] || usage
+            ;;
+        at)
+            TIMESTAMP="${2:-}"
+            VIDEO="${3:-}"
+            [ -n "${TIMESTAMP}" ] && [ -n "${VIDEO}" ] || usage
+            ;;
+        *)
+            echo "Error: unknown mode '${MODE}'" >&2
+            usage
+            ;;
+    esac
+fi
+
+if [ ! -f "${VIDEO}" ]; then
+    echo "Error: file not found — ${VIDEO}" >&2
+    exit 1
+fi
+
+# --- build output path ---
+TITLE="$(basename "${VIDEO}")"
+TITLE="${TITLE%.*}"
+
+if [ -z "${OUTDIR}" ]; then
+    OUTDIR="${HOME}/Pictures/frames/${TITLE}"
+fi
+
+mkdir -p "${OUTDIR}" || {
+    echo "Error: could not create ${OUTDIR}" >&2
+    exit 1
+}
+
+# --- helper: human timestamp → seconds ---
+parse_timestamp() {
+    local ts="$1"
+    # plain number (seconds, optional decimal)
+    if [[ "${ts}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "${ts}"
+        return
+    fi
+    # HH:MM:SS or MM:SS
+    IFS=':' read -ra parts <<< "${ts}"
+    case ${#parts[@]} in
+        2) echo "${parts[0]}*60 + ${parts[1]}" | bc -l ;;
+        3) echo "${parts[0]}*3600 + ${parts[1]}*60 + ${parts[2]}" | bc -l ;;
+        *) echo "Error: invalid timestamp '${ts}'. Use seconds, MM:SS, or HH:MM:SS" >&2; exit 1 ;;
+    esac
+}
+
+# --- helper: get video duration (seconds) ---
+video_duration() {
+    ffprobe -v error -show_entries format=duration -of csv=p=0 "${VIDEO}"
+}
+
+# --- helper: format seconds as HH:MM:SS.ms (uses awk — bc % is broken on floats) ---
+fmt_time() {
+    awk -v s="$1" 'BEGIN {
+        h = int(s / 3600)
+        m = int((s % 3600) / 60)
+        printf "%d:%02d:%06.3f", h, m, s % 60
+    }'
+}
+
+# --- mode: list ---
+if $LIST_MODE; then
+    echo "=== $(basename "${VIDEO}") ==="
+    echo ""
+
+    # Stream info
+    ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,duration,nb_frames,pix_fmt,codec_name -of default=noprint_wrappers=1 "${VIDEO}" \
+        | sed 's/^/  /'
+
+    DUR=$(video_duration)
+    FPS_STR=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "${VIDEO}")
+    FPS=$(echo "scale=2; ${FPS_STR}" | bc -l 2>/dev/null || echo "?")
+    echo "  duration_hms: $(fmt_time "${DUR}")"
+    echo "  fps:          ${FPS}"
+
+    echo ""
+    echo "--- keyframes (seekable positions) ---"
+    # Use packet-level inspection — reliable across all codecs
+    ffprobe -v quiet -select_streams v:0 \
+        -show_entries packet=pts_time,flags \
+        -of csv=p=0 "${VIDEO}" \
+        | awk -F, '/K__/ { printf "  %7.3fs  keyframe\n", $1 }'
+
+    echo ""
+    echo "Tip: use \"frame at <timestamp>\" to extract a specific frame."
+    echo "     Keyframes are instant to seek; non-keyframes require decoding from the nearest keyframe."
+    exit 0
+fi
+
+# --- duration validation for 'at' mode ---
+if [ "${MODE}" = at ]; then
+    SEEK_SECS="$(parse_timestamp "${TIMESTAMP}")"
+    DUR=$(video_duration)
+
+    if [ "$(echo "${SEEK_SECS} > ${DUR}" | bc -l)" = "1" ]; then
+        echo "Error: timestamp ${TIMESTAMP} (${SEEK_SECS}s) is past video end ($(fmt_time "${DUR}"))" >&2
+        exit 1
+    fi
+    if [ "$(echo "${SEEK_SECS} < 0" | bc -l)" = "1" ]; then
+        echo "Error: timestamp must be ≥ 0" >&2
+        exit 1
+    fi
+
+    SAFE_NAME="${TIMESTAMP//:/_}"
+    OUTFILE="${OUTDIR}/at_${SAFE_NAME}.png"
+    # -ss AFTER -i = output seeking (frame-accurate, decodes from start)
+    ffmpeg -y -i "${VIDEO}" -ss "${SEEK_SECS}" -update 1 -frames:v 1 "${OUTFILE}"
+    echo "→ ${OUTFILE}"
+    exit 0
+fi
+
+# --- extract ---
+case "${MODE}" in
+    first)
+        OUTFILE="${OUTDIR}/first.png"
+        ffmpeg -y -i "${VIDEO}" -update 1 -frames:v 1 "${OUTFILE}"
+        ;;
+    last)
+        OUTFILE="${OUTDIR}/last.png"
+        # -sseof seeks from end-of-file — immune to format/stream duration mismatch.
+        # 0.2s is small enough to land near the last frame but large enough to
+        # always find a keyframe to start decoding from.
+        ffmpeg -y -sseof -0.2 -i "${VIDEO}" -update 1 -frames:v 1 "${OUTFILE}"
+        ;;
+esac
+
+echo "→ ${OUTFILE}"

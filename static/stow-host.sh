@@ -259,14 +259,14 @@ select_packages() {
       TMUX_OVERLAY="tmux-remote-servalws"
       SSH_OVERLAY="servalws"
       EXTRA=(
-        1Password wezterm
+        apps 1Password wezterm
         awesome awesome_wm_scripts picom dunst rofi polybar awesomewm-bin
       )
       ;;
     minisforoum)
       TMUX_OVERLAY="tmux-remote-minisforoum"
       SSH_OVERLAY="minisforoum"
-      EXTRA=(1Password wezterm)
+      EXTRA=(apps 1Password wezterm)
       ;;
     zotac-box)
       TMUX_OVERLAY="tmux-remote-zotac-box"
@@ -276,6 +276,10 @@ select_packages() {
         SSH_OVERLAY="$user_ssh"
       else
         log_warn "zotac-box: no SSH overlay found for user '${CURRENT_USER}' (expected ssh/${user_ssh})"
+      fi
+      # tima gets apps, alikebrahim doesn't
+      if [[ "$CURRENT_USER" == "tima" ]]; then
+        EXTRA=(apps)
       fi
       ;;
     macbook)
@@ -514,14 +518,31 @@ check_stow_simulation() {
 
   if ! $NO_SSH && [[ -n "$SSH_OVERLAY" && -d "$DOTFILES/ssh/$SSH_OVERLAY" ]]; then
     split_ssh_overlay
+    # Unstow stale SSH overlays first so the simulation reflects real run order
+    local stale_pkg stale_dir
+    for stale_dir in "$DOTFILES"/ssh/*/; do
+      [[ -d "${stale_dir}.ssh" ]] || continue
+      stale_pkg="$(basename "$stale_dir")"
+      [[ "$stale_pkg" == "zotac-box" ]] && continue
+      (cd "$DOTFILES" && stow --simulate -D --dir=ssh "$stale_pkg") >/dev/null 2>&1 || true
+    done
+    for stale_dir in "$DOTFILES"/ssh/zotac-box/*/; do
+      [[ -d "${stale_dir}.ssh" ]] || continue
+      stale_pkg="$(basename "$stale_dir")"
+      (cd "$DOTFILES" && stow --simulate -D --dir=ssh/zotac-box "$stale_pkg") >/dev/null 2>&1 || true
+    done
+    # Now simulate stowing the selected overlay
     output=""
     rc=0
-    output=$(cd "$DOTFILES" && stow --simulate -v -R --dir="$SSH_STOW_DIR" "$SSH_STOW_PKG" 2>&1) || rc=$?
+    output=$(cd "$DOTFILES" && stow --simulate -R --dir="$SSH_STOW_DIR" "$SSH_STOW_PKG" 2>&1) || rc=$?
     if [[ $rc -eq 0 ]]; then
       log_pass "stow dry-run OK: ssh/$SSH_OVERLAY"
-      if $VERBOSE && [[ -n "$output" ]]; then
-        echo "$output"
-      fi
+    # SSH overlay conflicts where existing links point to a different SSH
+    # package are expected — unstow_ssh_overlays() handles them at runtime.
+    # Only downgrade to WARN if the ONLY conflicts are cross-package links.
+    elif echo "$output" | grep -q 'existing target is stowed to a different package' \
+         && ! echo "$output" | grep -q 'existing target is neither'; then
+      log_warn "stow ssh/$SSH_OVERLAY has cross-package conflicts (resolved by unstow_ssh_overlays at runtime)"
     else
       log_fail "stow dry-run failed: ssh/$SSH_OVERLAY"
       echo "$output"
@@ -627,6 +648,58 @@ unstow_all_packages() {
   echo ""
 }
 
+# Unstow all SSH overlays before stowing the selected one.
+# SSH overlays live under ssh/ and are stowed with --dir=ssh/<host>.
+# zotac-box uses per-user subdirs (ssh/zotac-box/<user>_zotac-box/).
+unstow_ssh_overlays() {
+  local dir pkg output
+  echo "=== Unstowing all SSH overlays ==="
+  if [[ ! -d "$DOTFILES/ssh" ]]; then
+    echo "  [SKIP]  no ssh/ directory"
+    echo ""
+    return 0
+  fi
+  # Flat overlays: ssh/<host>/.ssh/
+  for dir in "$DOTFILES"/ssh/*/; do
+    [[ -d "$dir.ssh" ]] || continue
+    local flat_pkg
+    flat_pkg="$(basename "$dir")"
+    # Skip zotac-box (handled below as per-user)
+    [[ "$flat_pkg" == "zotac-box" ]] && continue
+    if $DRY_RUN; then
+      echo "  [DRY]   stow --simulate -v -D --dir=ssh $flat_pkg"
+      (cd "$DOTFILES" && stow --simulate -v -D --dir=ssh "$flat_pkg") || true
+      continue
+    fi
+    if output=$(cd "$DOTFILES" && stow -D --dir=ssh "$flat_pkg" 2>&1); then
+      echo "  [OK]    unstow ssh/$flat_pkg"
+    else
+      echo "  [WARN]  unstow ssh/$flat_pkg reported issues"
+      echo "$output"
+    fi
+  done
+  # Per-user overlays: ssh/zotac-box/<user>_zotac-box/
+  if [[ -d "$DOTFILES/ssh/zotac-box" ]]; then
+    for dir in "$DOTFILES"/ssh/zotac-box/*/; do
+      [[ -d "${dir}.ssh" ]] || continue
+      local user_pkg
+      user_pkg="$(basename "$dir")"
+      if $DRY_RUN; then
+        echo "  [DRY]   stow --simulate -v -D --dir=ssh/zotac-box $user_pkg"
+        (cd "$DOTFILES" && stow --simulate -v -D --dir=ssh/zotac-box "$user_pkg") || true
+        continue
+      fi
+      if output=$(cd "$DOTFILES" && stow -D --dir=ssh/zotac-box "$user_pkg" 2>&1); then
+        echo "  [OK]    unstow ssh/zotac-box/$user_pkg"
+      else
+        echo "  [WARN]  unstow ssh/zotac-box/$user_pkg reported issues"
+        echo "$output"
+      fi
+    done
+  fi
+  echo ""
+}
+
 stow_selected_packages() {
   local pkg failed=0
   echo "=== Stowing selected packages ==="
@@ -693,6 +766,7 @@ main() {
     echo "=== Dry-run deployment plan ==="
     ensure_safety_dirs || true
     unstow_all_packages
+    unstow_ssh_overlays
     stow_selected_packages || true
     run_stow_ssh_overlay || true
     install_tmux_plugins
@@ -704,6 +778,7 @@ main() {
   preflight
   ensure_safety_dirs
   unstow_all_packages
+  unstow_ssh_overlays
   stow_selected_packages
   run_stow_ssh_overlay
   install_tmux_plugins
