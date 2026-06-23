@@ -136,6 +136,11 @@ _add_path_once() {
 _add_path_once "/usr/local/go/bin"
 _add_path_once "$HOME/go/bin"
 
+# cargo (Rust)
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
 # Miniconda
 if [ -d "$HOME/miniconda3/bin" ]; then
     _add_path_once "$HOME/miniconda3/bin"
@@ -163,34 +168,33 @@ if [ -d "$HOME/.bun" ]; then
 fi
 
 unset -f _add_path_once 2>/dev/null
-eval eval -- "$(/usr/local/bin/starship init bash --print-full-init)"
+
+# starship prompt
+if [ -x /usr/local/bin/starship ]; then
+    eval eval -- "$(/usr/local/bin/starship init bash --print-full-init)"
+fi
+
 alias transmission=transmission-cli
 
-. "$HOME/.atuin/bin/env"
+# atuin shell history
+if [ -f "$HOME/.atuin/bin/env" ]; then
+    . "$HOME/.atuin/bin/env"
+fi
 
 [[ -f ~/.bash-preexec.sh ]] && source ~/.bash-preexec.sh
-eval "$(atuin init bash)"
 
-# Auto-attach tmux on SSH login (exec replaces bash — detach exits SSH immediately).
-# The system window uses remain-on-exit so accidental Ctrl-D/exit leaves a
-# respawnable dead pane instead of destroying the landing window.
-if [ -z "$TMUX" ] && [ -n "$SSH_TTY" ] && command -v tmux >/dev/null 2>&1; then
-  if tmux has-session -t ssh_tmux 2>/dev/null; then
-    if ! tmux list-windows -t ssh_tmux -F '#W' 2>/dev/null | grep -qx 'system'; then
-      tmux new-window -d -t ssh_tmux -n system
-    fi
-  else
-    tmux new-session -d -s ssh_tmux -n system
-  fi
-
-  tmux set-window-option -t ssh_tmux:system remain-on-exit on 2>/dev/null || true
-  exec tmux attach-session -t ssh_tmux:system
+if command -v atuin >/dev/null 2>&1; then
+    eval "$(atuin init bash)"
 fi
 
 # fzf
-export PATH=$HOME/.fzf/bin:$PATH
+if [ -d "$HOME/.fzf/bin" ]; then
+    export PATH="$HOME/.fzf/bin:$PATH"
+fi
 
-. "$HOME/.local/bin/env"
+if [ -f "$HOME/.local/bin/env" ]; then
+    . "$HOME/.local/bin/env"
+fi
 
 # Hermes Agent — ensure ~/.local/bin is on PATH
 export PATH="$HOME/.local/bin:$PATH"

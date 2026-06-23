@@ -48,7 +48,8 @@ If `~/.local` gets tree-folded to `.dotfiles/my-bin/.local`, then all per-host r
 
 ### my-bin package boundaries
 
-- `my-bin` contains **only `.local/bin/`** with shared scripts (aiw, hermes, note, x11_connections_check, fix-nvidia-suspend.sh).
+- `my-bin` contains **only `.local/bin/`** with shared scripts (aiw, note, x11_connections_check, fix-nvidia-suspend.sh).
+- `hermes` is excluded from the repo via `.stignore`. Each host maintains its own `~/.local/bin/hermes` as a real file pointing to the host-local Hermes venv path. This prevents cross-host path breakage.
 - `.local/share/` and `.local/state/` must **never** be in the repo or synced via Syncthing.
 - Host-specific binaries installed to `~/.local/bin/` (e.g., `uv`, `ente`, `pip install --user`) are real files alongside the symlinks. They do **not** enter the repo and do **not** sync.
 - The `.stignore` file excludes `my-bin/.local/share` and `my-bin/.local/state` from Syncthing.

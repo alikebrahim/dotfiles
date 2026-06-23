@@ -3,7 +3,6 @@
 [user]
 	name = Ali K. Ebrahim
 	email = alikebrahim@me.com
-	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEcptigfOE1s34Y8TLx78yamv3nAxidgn0aqdnSFKWsV
 [filter "lfs"]
 	smudge = git-lfs smudge -- %f
 	process = git-lfs filter-process
@@ -32,9 +31,9 @@
 
 [diff]
     colorMoved = default
-[gpg]
-	format = ssh
-[gpg "ssh"]
-	program = /opt/1Password/op-ssh-sign
-[commit]
-	gpgsign = true
+
+# 1Password SSH signing — only present on hosts with 1Password installed
+# (servalws, minisforoum). Stowed via the 1Password package. Git silently
+# ignores the include if the file does not exist.
+[include]
+    path = ~/.config/git/1password-signing.gitconfig

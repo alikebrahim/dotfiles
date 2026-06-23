@@ -1,6 +1,7 @@
 CLAUDE.md
 nvim/.config/nvim/lazy-lock.json
 .stfolder
+.ssh
 
 # SSH operational data (config is tracked, keys/known_hosts are not)
 ssh/**/.ssh/authorized_keys

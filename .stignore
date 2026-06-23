@@ -2,3 +2,5 @@
 my-bin/.local/state
 my-bin/.local/share
 .hermes-tmp*
+/themes
+my-bin/.local/bin/hermes
