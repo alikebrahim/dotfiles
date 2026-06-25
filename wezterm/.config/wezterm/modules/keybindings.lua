@@ -23,6 +23,11 @@ function M.apply(config)
 	table.insert(keys, { key = "c", mods = "CTRL|SHIFT", action = act.CopyTo("Clipboard") })
 	table.insert(keys, { key = "v", mods = "CTRL|SHIFT", action = act.PasteFrom("Clipboard") })
 
+	-- Quickselect: add Hermes session IDs to default patterns
+	config.quick_select_patterns = {
+		'\\d{8}_\\d{6}_[a-f0-9]{6}',
+	}
+
 	-- Pane control
 	table.insert(keys, { key = "-", mods = "LEADER", action = act.SplitVertical({ domain = "CurrentPaneDomain" }) })
 	table.insert(

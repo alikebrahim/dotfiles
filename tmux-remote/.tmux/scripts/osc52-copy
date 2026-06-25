@@ -1,0 +1,18 @@
+#!/bin/bash
+# osc52-copy — write tmux selection to terminal clipboard via OSC52
+# Reads selected text from stdin, base64-encodes, writes OSC52 escape
+# sequence directly to the client terminal (bypasses tmux's broken Ms).
+#
+# Usage: osc52-copy <client_tty>
+#   Called by tmux copy-mode binding with #{client_tty} as argument.
+#   If no valid tty (detached session), silently succeeds — nothing to do.
+
+set -e
+
+tty="${1:-}"
+if [ -z "$tty" ] || [ ! -e "$tty" ] || [ ! -w "$tty" ]; then
+    exit 0
+fi
+
+b64=$(base64 -w0)
+printf '\033]52;c;%s\a' "$b64" > "$tty"
