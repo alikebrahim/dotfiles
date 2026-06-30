@@ -29,10 +29,10 @@ This repo is **synced across machines via Syncthing** and **backed up via git** 
 ### Stow package model
 
 - **GNU Stow 2.3.1** is installed fleet-wide. It has **no `--no-folding` flag** (added in 2.4.0).
-- Deployment is via `static/stow-host.sh` — detects hostname, unstows all packages, stows host-appropriate packages, installs tmux plugins, reloads tmux.
+- Deployment is via `scripts/stow-host.sh` — detects hostname, unstows all packages, stows host-appropriate packages, installs system Xorg input policy, installs tmux plugins, reloads tmux.
 - Per-host SSH config overlays use `--dir=ssh` (e.g., `ssh/netmaster/`, `ssh/servalws/`).
 - Per-host tmux themes use base `tmux-remote/` + overlay `tmux-remote-HOST/` packages.
-- Run `bash ~/.dotfiles/static/stow-host.sh` AFTER Syncthing sync completes, not before.
+- Run `bash ~/.dotfiles/scripts/stow-host.sh` AFTER Syncthing sync completes, not before.
 
 ### Tree folding — critical hazard
 
@@ -44,7 +44,7 @@ If `~/.local` gets tree-folded to `.dotfiles/my-bin/.local`, then all per-host r
 - `my-bin/.stow-local-ignore` excludes `.local/share` and `.local/state` from Stow.
 - `stow-host.sh` creates `~/.local/state/` as a real directory before stowing `my-bin`, preventing tree folding.
 - `stow-host.sh` refuses to stow `my-bin` if `~/.local` is already a symlink (tree-folded).
-- `static/check-fold.sh` diagnoses folding across all hosts and can fix folded hosts with `--fix`.
+- `scripts/check-fold.sh` diagnoses folding across all hosts and can fix folded hosts with `--fix`.
 
 ### my-bin package boundaries
 

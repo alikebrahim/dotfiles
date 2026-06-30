@@ -7,6 +7,8 @@ set -euo pipefail
 
 DOTFILES="${DOTFILES:-${HOME}/.dotfiles}"
 PROGRAM="$(basename "$0")"
+XORG_INPUT_CONFIG_REL="scripts/xorg/40-libinput-natural-scrolling.conf"
+XORG_INPUT_CONFIG_TARGET="/etc/X11/xorg.conf.d/40-libinput-natural-scrolling.conf"
 
 MODE="run"
 HOST_OVERRIDE=""
@@ -15,6 +17,7 @@ FORCE=false
 ADOPT=false
 NO_TMUX=false
 NO_SSH=false
+NO_XORG_INPUT=false
 CHECK_ONLY=false
 DRY_RUN=false
 LIST_ONLY=false
@@ -35,7 +38,7 @@ ALL_PACKAGES=(
   tmux
   tmux-remote
   tmux-remote-netmaster tmux-remote-servalws tmux-remote-minisforoum
-  tmux-remote-zotac-box tmux-remote-macbook
+  tmux-remote-zotac-box tmux-remote-macbook tmux-remote-honor
 )
 
 # Packages common to every host.
@@ -67,8 +70,9 @@ Default behavior:
   4. Create safety directories that prevent GNU Stow tree-folding.
   5. Unstow all known packages.
   6. Stow selected packages and the per-host SSH overlay.
-  7. Install/update tmux plugins unless skipped.
-  8. Reload tmux only if already inside a tmux session.
+  7. Install/update system Xorg input policy unless skipped.
+  8. Install/update tmux plugins unless skipped.
+  9. Reload tmux only if already inside a tmux session.
 
 Options:
   -h, --help          Show this help text and exit.
@@ -82,15 +86,16 @@ Options:
       --force         Skip blocking pre-flight failures and run anyway.
       --no-tmux       Skip tmux plugin installation/update and tmux reload.
       --no-ssh        Skip per-host SSH overlay stowing.
+      --no-xorg-input Skip installing the Xorg/libinput natural scrolling config.
       --dotfiles DIR  Override dotfiles repo path. Default: $HOME/.dotfiles.
 
 Examples:
-  bash ~/.dotfiles/static/stow-host.sh --help
-  bash ~/.dotfiles/static/stow-host.sh --list
-  bash ~/.dotfiles/static/stow-host.sh --check
-  bash ~/.dotfiles/static/stow-host.sh --dry-run
-  bash ~/.dotfiles/static/stow-host.sh --host servalws --list
-  bash ~/.dotfiles/static/stow-host.sh --no-tmux
+  bash ~/.dotfiles/scripts/stow-host.sh --help
+  bash ~/.dotfiles/scripts/stow-host.sh --list
+  bash ~/.dotfiles/scripts/stow-host.sh --check
+  bash ~/.dotfiles/scripts/stow-host.sh --dry-run
+  bash ~/.dotfiles/scripts/stow-host.sh --host servalws --list
+  bash ~/.dotfiles/scripts/stow-host.sh --no-tmux
 
 Host package map:
   common on all hosts:
@@ -124,6 +129,7 @@ Pre-flight checks include:
   - ~/.local/state and ~/.local/share are real directories when present
   - safety directories that would be created are listed
   - broken symlinks pointing into this dotfiles repo are reported
+  - Xorg/libinput natural scrolling config source exists unless --no-xorg-input is used
   - tmux plugin installer exists unless --no-tmux is used
 
 Tree-folding note:
@@ -212,6 +218,10 @@ parse_args() {
         NO_SSH=true
         shift
         ;;
+      --no-xorg-input)
+        NO_XORG_INPUT=true
+        shift
+        ;;
       *)
         echo "ERROR: unknown option: $1" >&2
         echo "Run: $PROGRAM --help" >&2
@@ -286,6 +296,10 @@ select_packages() {
       TMUX_OVERLAY="tmux-remote-macbook"
       SSH_OVERLAY="macbook"
       ;;
+    honor)
+      TMUX_OVERLAY="tmux-remote-honor"
+      SSH_OVERLAY="honor"
+      ;;
     *)
       log_warn "unknown host '${HOST}'; using common packages only"
       ;;
@@ -314,7 +328,7 @@ print_selection() {
   else
     echo "Tmux theme: none"
   fi
-  echo "Options:    force=${FORCE} adopt=${ADOPT} no_tmux=${NO_TMUX} no_ssh=${NO_SSH} verbose=${VERBOSE}"
+  echo "Options:    force=${FORCE} adopt=${ADOPT} no_tmux=${NO_TMUX} no_ssh=${NO_SSH} no_xorg_input=${NO_XORG_INPUT} verbose=${VERBOSE}"
 }
 
 stow_cmd_for_package() {
@@ -400,7 +414,7 @@ ensure_safety_dirs() {
 
   if [[ -L "$HOME/.local" ]]; then
     echo "  [ERROR] ~/.local is a symlink: $(readlink "$HOME/.local")"
-    echo "          Refusing to stow my-bin. Run: bash ~/.dotfiles/static/check-fold.sh --fix"
+    echo "          Refusing to stow my-bin. Run: bash ~/.dotfiles/scripts/check-fold.sh --fix"
     return 1
   fi
 
@@ -451,10 +465,23 @@ check_repo() {
     return 0
   fi
 
-  if [[ -f "$DOTFILES/static/stow-host.sh" ]]; then
+  if [[ -f "$DOTFILES/scripts/stow-host.sh" ]]; then
     log_pass "stow-host.sh present in repo"
   else
-    log_warn "static/stow-host.sh not found under repo path"
+    log_warn "scripts/stow-host.sh not found under repo path"
+  fi
+}
+
+check_xorg_input_config() {
+  if $NO_XORG_INPUT; then
+    log_pass "Xorg input config install skipped (--no-xorg-input)"
+    return 0
+  fi
+
+  if [[ -f "$DOTFILES/$XORG_INPUT_CONFIG_REL" ]]; then
+    log_pass "Xorg input config source present: $XORG_INPUT_CONFIG_REL"
+  else
+    log_fail "Xorg input config source missing: $DOTFILES/$XORG_INPUT_CONFIG_REL"
   fi
 }
 
@@ -584,10 +611,10 @@ check_tmux_installer() {
     return 0
   fi
 
-  if [[ -x "$DOTFILES/static/install-tmux-plugins.sh" || -f "$DOTFILES/static/install-tmux-plugins.sh" ]]; then
+  if [[ -x "$DOTFILES/scripts/install-tmux-plugins.sh" || -f "$DOTFILES/scripts/install-tmux-plugins.sh" ]]; then
     log_pass "tmux plugin installer present"
   else
-    log_fail "tmux plugin installer missing: $DOTFILES/static/install-tmux-plugins.sh"
+    log_fail "tmux plugin installer missing: $DOTFILES/scripts/install-tmux-plugins.sh"
   fi
 }
 
@@ -599,6 +626,7 @@ preflight() {
   check_tree_folding
   check_stow_simulation
   check_broken_dotfiles_links
+  check_xorg_input_config
   check_tmux_installer
   echo ""
   echo "=== Pre-flight summary ==="
@@ -710,6 +738,57 @@ stow_selected_packages() {
   return "$failed"
 }
 
+install_xorg_input_config() {
+  if $NO_XORG_INPUT; then
+    echo "=== Skipping Xorg input config (--no-xorg-input) ==="
+    echo ""
+    return 0
+  fi
+
+  local source="${DOTFILES}/${XORG_INPUT_CONFIG_REL}"
+  local target="$XORG_INPUT_CONFIG_TARGET"
+  local install_cmd=(install -D -m 0644 "$source" "$target")
+
+  echo "=== Installing Xorg input config ==="
+
+  if [[ ! -f "$source" ]]; then
+    echo "  [ERROR] missing source: $source"
+    return 1
+  fi
+
+  if [[ ! -d /etc/X11 && ! -d /usr/share/X11/xorg.conf.d && ! -d /etc/X11/xorg.conf.d ]]; then
+    echo "  [SKIP]  Xorg config directories not found on this host"
+    echo ""
+    return 0
+  fi
+
+  if $DRY_RUN; then
+    printf '  [DRY]   sudo '
+    printf '%q ' "${install_cmd[@]}"
+    printf '\n\n'
+    return 0
+  fi
+
+  if [[ -f "$target" ]] && cmp -s "$source" "$target"; then
+    echo "  [OK]    already current: $target"
+    echo ""
+    return 0
+  fi
+
+  if [[ $EUID -eq 0 ]]; then
+    run_cmd "${install_cmd[@]}"
+  else
+    if ! command -v sudo >/dev/null 2>&1; then
+      echo "  [ERROR] sudo is required to install $target"
+      return 1
+    fi
+    run_cmd sudo "${install_cmd[@]}"
+  fi
+
+  echo "  [OK]    installed: $target"
+  echo ""
+}
+
 install_tmux_plugins() {
   if $NO_TMUX; then
     echo "=== Skipping tmux plugins (--no-tmux) ==="
@@ -719,12 +798,12 @@ install_tmux_plugins() {
 
   echo "=== Installing/updating tmux plugins ==="
   if $DRY_RUN; then
-    echo "  [DRY]   bash ${DOTFILES}/static/install-tmux-plugins.sh"
+    echo "  [DRY]   bash ${DOTFILES}/scripts/install-tmux-plugins.sh"
     echo ""
     return 0
   fi
 
-  bash "${DOTFILES}/static/install-tmux-plugins.sh"
+  bash "${DOTFILES}/scripts/install-tmux-plugins.sh"
   echo ""
 }
 
@@ -769,6 +848,7 @@ main() {
     unstow_ssh_overlays
     stow_selected_packages || true
     run_stow_ssh_overlay || true
+    install_xorg_input_config
     install_tmux_plugins
     reload_tmux_if_live
     echo "Dry-run complete. No changes were made."
@@ -781,6 +861,7 @@ main() {
   unstow_ssh_overlays
   stow_selected_packages
   run_stow_ssh_overlay
+  install_xorg_input_config
   install_tmux_plugins
   reload_tmux_if_live
 

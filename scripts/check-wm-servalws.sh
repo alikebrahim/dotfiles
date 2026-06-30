@@ -3,8 +3,8 @@
 # Checks: running processes, installed binaries, config symlinks,
 #          awesome config validity, script references, theme system.
 #
-# Run ON servalws:  bash ~/.dotfiles/static/check-wm-servalws.sh
-# Or from netmaster: ssh servalws 'bash ~/.dotfiles/static/check-wm-servalws.sh'
+# Run ON servalws:  bash ~/.dotfiles/scripts/check-wm-servalws.sh
+# Or from netmaster: ssh servalws 'bash ~/.dotfiles/scripts/check-wm-servalws.sh'
 
 set -euo pipefail
 
