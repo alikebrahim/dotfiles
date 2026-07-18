@@ -1,0 +1,650 @@
+#!/usr/bin/env bash
+# llm — single-slot multi-profile llama-server manager (Serval WS / local LLM)
+#
+# One model resident at a time on a loopback port. Profiles are host-local YAML.
+# This command is stowed via my-bin; model paths stay under ~/ai-experiments/.
+#
+# Usage:
+#   llm list [--all]
+#   llm status [--short]
+#   llm stop [--force]
+#   llm start [--dry-run] <profile>
+#   llm switch [--dry-run] <profile>
+#   llm logs [N]
+#   llm hermes-hint [profile]     # print provider blurb for active or named profile
+#   llm doctor
+#
+# Env overrides:
+#   LLM_SERVER_PROFILES   path to profiles YAML
+#   LLM_SERVER_STATE      state directory
+#   LLM_SERVER_ROOT       default: ~/ai-experiments
+set -euo pipefail
+
+NAME="$(basename "$0")"
+AI_ROOT="${LLM_SERVER_ROOT:-${HOME}/ai-experiments}"
+PROFILES_YAML="${LLM_SERVER_PROFILES:-${AI_ROOT}/harness/server_profiles.yaml}"
+STATE_DIR="${LLM_SERVER_STATE:-${AI_ROOT}/run/llm-server}"
+PID_FILE="${STATE_DIR}/server.pid"
+SERVER_PID_FILE="${STATE_DIR}/llama-server.pid"
+META_FILE="${STATE_DIR}/active.json"
+LOG_FILE="${STATE_DIR}/server.log"
+LOCK_FILE="${STATE_DIR}/manager.lock"
+
+mkdir -p "$STATE_DIR"
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "$*"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
+
+need python3
+need ss
+need curl
+need pgrep
+
+[[ -f "$PROFILES_YAML" ]] || die "profiles not found: $PROFILES_YAML
+  Expected host-local config (Serval). Create/copy server_profiles.yaml or set LLM_SERVER_PROFILES."
+
+# --- lock (with stale recovery) ---
+LOCK_HELD=0
+acquire_lock() {
+  local force="${1:-0}"
+  exec 9>"$LOCK_FILE"
+  if flock -n 9; then
+    LOCK_HELD=1
+    echo "$$" >"${LOCK_FILE}.pid"
+    return 0
+  fi
+  local holder=""
+  holder="$(cat "${LOCK_FILE}.pid" 2>/dev/null || true)"
+  if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
+    info "breaking stale lock (dead holder pid ${holder})"
+    rm -f "$LOCK_FILE" "${LOCK_FILE}.pid"
+    exec 9>"$LOCK_FILE"
+    flock -n 9 || die "could not acquire lock after breaking stale lock"
+    LOCK_HELD=1
+    echo "$$" >"${LOCK_FILE}.pid"
+    return 0
+  fi
+  if [[ "$force" == "1" ]]; then
+    info "force: stealing lock from holder ${holder:-unknown}"
+    flock -u 9 2>/dev/null || true
+    rm -f "$LOCK_FILE" "${LOCK_FILE}.pid"
+    exec 9>"$LOCK_FILE"
+    flock -n 9 || die "could not force-acquire lock"
+    LOCK_HELD=1
+    echo "$$" >"${LOCK_FILE}.pid"
+    return 0
+  fi
+  die "another ${NAME} operation is in progress (holder pid ${holder:-unknown}); try: ${NAME} stop --force"
+}
+
+release_lock() {
+  if [[ "$LOCK_HELD" == "1" ]]; then
+    rm -f "${LOCK_FILE}.pid"
+    flock -u 9 2>/dev/null || true
+    LOCK_HELD=0
+  fi
+}
+trap release_lock EXIT
+
+# --- yaml helpers ---
+py_get() {
+  local expr="$1"
+  python3 - "$PROFILES_YAML" "$expr" <<'PY'
+import sys, yaml, json
+path, expr = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = yaml.safe_load(f) or {}
+cur = data
+for part in expr.split("."):
+    if not isinstance(cur, dict):
+        cur = None
+        break
+    cur = cur.get(part)
+if cur is None:
+    sys.exit(2)
+if isinstance(cur, bool):
+    print("true" if cur else "false")
+elif isinstance(cur, (list, dict)):
+    print(json.dumps(cur))
+else:
+    print(cur)
+PY
+}
+
+py_get_default() {
+  local expr="$1" default="$2"
+  py_get "$expr" 2>/dev/null || printf '%s' "$default"
+}
+
+profile_exists() {
+  py_get "profiles.$1.model" >/dev/null 2>&1
+}
+
+list_profiles() {
+  local show_all="${1:-0}"
+  python3 - "$PROFILES_YAML" "$show_all" <<'PY'
+import sys, yaml, os
+path, show_all = sys.argv[1], sys.argv[2] == "1"
+with open(path) as f:
+    data = yaml.safe_load(f) or {}
+for name, p in (data.get("profiles") or {}).items():
+    p = p or {}
+    model = p.get("model") or ""
+    exists = os.path.isfile(model)
+    if not show_all and not exists:
+        continue
+    mark = "ok" if exists else "MISSING"
+    desc = p.get("description", "")
+    alias = p.get("alias") or name
+    ctx = p.get("ctx", "?")
+    print(f"{name}\t[{mark}]\talias={alias}\tctx={ctx}\t{desc}")
+    print(f"  model: {model}")
+PY
+}
+
+port_owner_pids() {
+  local port="$1"
+  ss -ltnp 2>/dev/null | awk -v p=":"$port'$' '
+    $4 ~ p {
+      if (match($0, /pid=([0-9]+)/, m)) print m[1]
+    }'
+}
+
+any_llama_server_pids() {
+  pgrep -f '[.]/build-cuda-sm89/bin/llama-server|/bin/llama-server ' 2>/dev/null || true
+  pgrep -f 'toolbox run -c .* llama-server' 2>/dev/null || true
+}
+
+find_real_server_pid() {
+  # Prefer process whose cmdline is the binary itself (not toolbox wrapper).
+  local p cmd
+  for p in $(pgrep -f 'build-cuda-sm89/bin/llama-server' 2>/dev/null || true); do
+    cmd="$(ps -o cmd= -p "$p" 2>/dev/null || true)"
+    if [[ "$cmd" == *"/llama-server"* && "$cmd" != toolbox* && "$cmd" != podman* ]]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  # fallback first match
+  pgrep -f 'build-cuda-sm89/bin/llama-server' 2>/dev/null | head -1 || true
+}
+
+gpu_used() {
+  nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null || echo "?,?"
+}
+
+# --- status ---
+cmd_status() {
+  local short="${1:-0}"
+  local port host
+  port="$(py_get_default defaults.port 8080)"
+  host="$(py_get_default defaults.host 127.0.0.1)"
+  local health="down" model="-" profile="-" ctx="-" gpu
+  gpu="$(gpu_used)"
+  if [[ -f "$META_FILE" ]]; then
+    profile="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("profile","-"))' "$META_FILE" 2>/dev/null || echo -)"
+    model="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("alias") or d.get("model","-"))' "$META_FILE" 2>/dev/null || echo -)"
+    ctx="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("ctx","-"))' "$META_FILE" 2>/dev/null || echo -)"
+  fi
+  if curl -fsS --max-time 2 "http://${host}:${port}/health" >/dev/null 2>&1; then
+    health="ok"
+    if [[ "$model" == "-" ]]; then
+      model="$(curl -fsS --max-time 5 "http://${host}:${port}/v1/models" 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("data") or [{}])[0].get("id","-"))' 2>/dev/null || echo -)"
+    fi
+  fi
+
+  if [[ "$short" == "1" ]]; then
+    if [[ "$health" == "ok" ]]; then
+      echo "loaded: ${model} | profile ${profile} | ctx ${ctx} | GPU ${gpu} MiB | health ok | http://${host}:${port}/v1"
+    else
+      echo "loaded: none | GPU ${gpu} MiB | health down | port ${host}:${port}"
+    fi
+    return 0
+  fi
+
+  echo "=== ${NAME} status ==="
+  echo "profiles: $PROFILES_YAML"
+  echo "state:    $STATE_DIR"
+  echo "port:     ${host}:${port}"
+  if [[ -f "$META_FILE" ]]; then
+    echo "meta:"
+    cat "$META_FILE"
+  else
+    echo "meta: (none)"
+  fi
+  if [[ -f "$PID_FILE" ]]; then
+    local wpid
+    wpid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    echo "wrapper_pid: ${wpid:-?} (alive=$(kill -0 "${wpid:-0}" 2>/dev/null && echo yes || echo no))"
+  else
+    echo "wrapper_pid: (none)"
+  fi
+  if [[ -f "$SERVER_PID_FILE" ]]; then
+    local spid
+    spid="$(cat "$SERVER_PID_FILE" 2>/dev/null || true)"
+    echo "server_pid:  ${spid:-?} (alive=$(kill -0 "${spid:-0}" 2>/dev/null && echo yes || echo no))"
+  else
+    echo "server_pid:  (none recorded)"
+  fi
+  echo "listeners:"
+  ss -ltnp 2>/dev/null | grep -E ":${port}\\b" || echo "  (none on ${port})"
+  echo "llama-server processes:"
+  local pids
+  pids="$(any_llama_server_pids | sort -u | tr '\n' ' ')"
+  if [[ -n "${pids// /}" ]]; then
+    # shellcheck disable=SC2086
+    ps -o pid,ppid,etime,cmd -p $pids 2>/dev/null || true
+  else
+    echo "  (none)"
+  fi
+  echo "gpu: ${gpu} MiB used/total"
+  if [[ "$health" == "ok" ]]; then
+    echo "health: ok"
+    echo "models:"
+    curl -fsS --max-time 5 "http://${host}:${port}/v1/models" 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); print(" ", [m.get("id") for m in d.get("data",[])])' 2>/dev/null || true
+  else
+    echo "health: down"
+  fi
+}
+
+# --- stop ---
+stop_all() {
+  local force="${1:-0}"
+  local port host
+  port="$(py_get_default defaults.port 8080)"
+  host="$(py_get_default defaults.host 127.0.0.1)"
+  info "=== stopping llama-server (free model / GPU) ==="
+
+  if [[ -f "$PID_FILE" ]]; then
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+      info "killing wrapper pid $pid"
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  fi
+
+  if [[ -f "$SERVER_PID_FILE" ]]; then
+    local spid
+    spid="$(cat "$SERVER_PID_FILE" 2>/dev/null || true)"
+    if [[ -n "${spid:-}" ]] && kill -0 "$spid" 2>/dev/null; then
+      info "killing server pid $spid"
+      kill -TERM "$spid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$spid" 2>/dev/null || true
+    fi
+  fi
+
+  local p
+  for p in $(any_llama_server_pids | sort -u); do
+    info "killing pid $p"
+    kill -TERM "$p" 2>/dev/null || true
+  done
+  sleep 1
+  for p in $(any_llama_server_pids | sort -u); do
+    kill -KILL "$p" 2>/dev/null || true
+  done
+
+  for p in $(port_owner_pids "$port" | sort -u); do
+    info "killing port-${port} owner pid $p"
+    kill -TERM "$p" 2>/dev/null || true
+    sleep 0.5
+    kill -KILL "$p" 2>/dev/null || true
+  done
+
+  if command -v toolbox >/dev/null 2>&1; then
+    local tb
+    tb="$(py_get_default defaults.toolbox llm-cuda-f44)"
+    toolbox run -c "$tb" bash -lc 'pkill -f "build-cuda-sm89/bin/llama-server" || true' 2>/dev/null || true
+  fi
+
+  local i
+  for i in $(seq 1 40); do
+    if ! ss -ltn 2>/dev/null | grep -qE ":${port}\\b"; then
+      break
+    fi
+    sleep 0.5
+  done
+
+  if ss -ltn 2>/dev/null | grep -qE ":${port}\\b"; then
+    if [[ "$force" == "1" ]]; then
+      info "port still busy after force kill attempts; inspect: ss -ltnp | grep ${port}"
+    else
+      die "port ${port} still in use after stop; try: ${NAME} stop --force"
+    fi
+  fi
+
+  rm -f "$PID_FILE" "$SERVER_PID_FILE" "$META_FILE"
+  info "stopped. port ${port} free. gpu: $(gpu_used)"
+}
+
+# --- build args ---
+build_cmd_args() {
+  local profile="$1"
+  python3 - "$PROFILES_YAML" "$profile" <<'PY'
+import sys, yaml
+path, name = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = yaml.safe_load(f) or {}
+d = data.get("defaults") or {}
+p = (data.get("profiles") or {}).get(name)
+if not p:
+    sys.exit(3)
+model = p["model"]
+alias = p.get("alias") or name
+host = d.get("host", "127.0.0.1")
+port = int(d.get("port", 8080))
+ngl = int(p.get("ngl", d.get("ngl", 99)))
+ctx = int(p["ctx"])
+threads = int(p.get("threads", d.get("threads", 16)))
+tb = int(p.get("batch_threads", d.get("batch_threads", 16)))
+np_ = int(p.get("parallel", d.get("parallel", 1)))
+jinja = p.get("jinja", d.get("jinja", True))
+no_ui = p.get("no_ui", d.get("no_ui", True))
+ncmoe = p.get("ncmoe", None)
+cmoe = p.get("cmoe", False)
+extra = p.get("extra_args") or []
+
+args = [
+    "-m", model,
+    "-ngl", str(ngl),
+    "-c", str(ctx),
+    "-t", str(threads),
+    "-tb", str(tb),
+    "-np", str(np_),
+    "--host", host,
+    "--port", str(port),
+    "--alias", alias,
+]
+if jinja:
+    args.append("--jinja")
+if no_ui:
+    args.append("--no-ui")
+if cmoe is True or str(cmoe).lower() in ("true", "1", "yes"):
+    args.append("-cmoe")
+elif ncmoe is not None:
+    args.extend(["-ncmoe", str(ncmoe)])
+args.extend(str(x) for x in extra)
+for a in args:
+    print(a)
+PY
+}
+
+print_hermes_hint() {
+  local profile="${1:-}"
+  local host port alias ctx endpoint
+  host="$(py_get_default defaults.host 127.0.0.1)"
+  port="$(py_get_default defaults.port 8080)"
+  if [[ -n "$profile" ]]; then
+    profile_exists "$profile" || die "unknown profile: $profile"
+    alias="$(py_get "profiles.${profile}.alias")"
+    ctx="$(py_get "profiles.${profile}.ctx")"
+  elif [[ -f "$META_FILE" ]]; then
+    alias="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("alias","?"))' "$META_FILE")"
+    ctx="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("ctx","?"))' "$META_FILE")"
+    profile="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("profile","?"))' "$META_FILE")"
+  else
+    die "no active server meta; pass a profile name: ${NAME} hermes-hint <profile>"
+  fi
+  endpoint="http://${host}:${port}/v1"
+  cat <<EOF
+# Hermes custom provider hint (profile: ${profile})
+endpoint / base_url: ${endpoint}
+model: ${alias}
+context_length: ${ctx}
+api_mode: chat_completions
+
+# curl smoke
+curl -sS ${endpoint%/v1}/health
+curl -sS ${endpoint}/models
+EOF
+}
+
+wait_ready() {
+  local host port timeout poll
+  host="$(py_get_default defaults.host 127.0.0.1)"
+  port="$(py_get_default defaults.port 8080)"
+  timeout="$(py_get_default defaults.ready_timeout_s 300)"
+  poll="$(py_get_default defaults.ready_poll_s 2)"
+  local start now
+  start=$(date +%s)
+  info "waiting for health on ${host}:${port} (timeout ${timeout}s)"
+  while true; do
+    if curl -fsS --max-time 2 "http://${host}:${port}/health" >/dev/null 2>&1; then
+      info "ready"
+      curl -fsS --max-time 5 "http://${host}:${port}/v1/models" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("models:", [m.get("id") for m in d.get("data",[])])'
+      return 0
+    fi
+    now=$(date +%s)
+    if (( now - start > timeout )); then
+      echo "---- last log lines ----" >&2
+      tail -n 40 "$LOG_FILE" >&2 || true
+      # classify common failures
+      if grep -qiE 'out of memory|cudaMalloc failed' "$LOG_FILE" 2>/dev/null; then
+        die "server failed to become healthy (likely GPU OOM). Try higher CPU MoE (-cmoe / -ncmoe) or lower ctx. See: $LOG_FILE"
+      fi
+      die "server did not become healthy within ${timeout}s (log: $LOG_FILE)"
+    fi
+    sleep "$poll"
+  done
+}
+
+start_profile() {
+  local profile="$1"
+  local dry_run="${2:-0}"
+  profile_exists "$profile" || die "unknown profile: $profile (${NAME} list)"
+  local model
+  model="$(py_get "profiles.${profile}.model")"
+  [[ -f "$model" ]] || die "model file missing for ${profile}: ${model}"
+
+  local port host llama_dir binary toolbox alias ctx
+  port="$(py_get_default defaults.port 8080)"
+  host="$(py_get_default defaults.host 127.0.0.1)"
+  llama_dir="$(py_get defaults.llama_dir)"
+  binary="$(py_get defaults.binary)"
+  toolbox="$(py_get_default defaults.toolbox llm-cuda-f44)"
+  alias="$(py_get "profiles.${profile}.alias")"
+  ctx="$(py_get "profiles.${profile}.ctx")"
+
+  mapfile -t ARGS < <(build_cmd_args "$profile")
+
+  if [[ "$dry_run" == "1" ]]; then
+    echo "=== dry-run profile: ${profile} ==="
+    echo "model: $model"
+    echo "alias: $alias  ctx: $ctx  port: ${host}:${port}"
+    echo "toolbox: $toolbox"
+    echo "cwd: $llama_dir"
+    printf 'command: toolbox run -c %q bash -lc ' "$toolbox"
+    printf '%q ' "cd $(printf %q "$llama_dir") && exec ./$(printf %q "$binary") $(printf '%q ' "${ARGS[@]}")"
+    echo
+    print_hermes_hint "$profile"
+    return 0
+  fi
+
+  if ss -ltn 2>/dev/null | grep -qE ":${port}\\b" || [[ -n "$(any_llama_server_pids)" ]]; then
+    info "existing server detected — stopping first to free VRAM"
+    stop_all 0
+  fi
+
+  info "=== starting profile: ${profile} ==="
+  info "model: $model"
+  info "alias: $alias  ctx: $ctx  port: ${host}:${port}"
+  printf 'args:'; printf '%q ' "${ARGS[@]}"; echo
+
+  : >"$LOG_FILE"
+  nohup toolbox run -c "$toolbox" bash -lc \
+    "cd $(printf %q "$llama_dir") && exec ./$(printf %q "$binary") $(printf '%q ' "${ARGS[@]}")" \
+    >>"$LOG_FILE" 2>&1 &
+  local wpid=$!
+  echo "$wpid" >"$PID_FILE"
+
+  # briefly wait and record real server pid if visible
+  sleep 1
+  local spid=""
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    spid="$(find_real_server_pid || true)"
+    [[ -n "$spid" ]] && break
+    sleep 0.5
+  done
+  if [[ -n "$spid" ]]; then
+    echo "$spid" >"$SERVER_PID_FILE"
+    info "server_pid: $spid"
+  fi
+
+  python3 - "$META_FILE" "$profile" "$alias" "$model" "$wpid" "${spid:-}" "$host" "$port" "$ctx" <<'PY'
+import json, sys, datetime
+path, profile, alias, model, wpid, spid, host, port, ctx = sys.argv[1:]
+meta = {
+  "profile": profile,
+  "alias": alias,
+  "model": model,
+  "wrapper_pid": int(wpid) if wpid else None,
+  "server_pid": int(spid) if spid.isdigit() else None,
+  "host": host,
+  "port": int(port),
+  "ctx": int(ctx),
+  "started_at": datetime.datetime.now().isoformat(timespec="seconds"),
+  "endpoint": f"http://{host}:{port}/v1",
+}
+with open(path, "w") as f:
+    json.dump(meta, f, indent=2)
+    f.write("\n")
+print(json.dumps(meta, indent=2))
+PY
+
+  wait_ready
+  # refresh server pid after ready
+  spid="$(find_real_server_pid || true)"
+  if [[ -n "$spid" ]]; then
+    echo "$spid" >"$SERVER_PID_FILE"
+    python3 - "$META_FILE" "$spid" <<'PY'
+import json,sys
+path, spid = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    d=json.load(f)
+d["server_pid"]=int(spid)
+with open(path,"w") as f:
+    json.dump(d,f,indent=2)
+    f.write("\n")
+PY
+  fi
+
+  info "log: $LOG_FILE"
+  info "gpu: $(gpu_used)"
+  echo
+  print_hermes_hint "$profile"
+}
+
+cmd_logs() {
+  if [[ -f "$LOG_FILE" ]]; then
+    tail -n "${1:-80}" "$LOG_FILE"
+  else
+    echo "no log yet: $LOG_FILE"
+  fi
+}
+
+cmd_doctor() {
+  echo "=== ${NAME} doctor ==="
+  echo "profiles: $PROFILES_YAML ($( [[ -f $PROFILES_YAML ]] && echo ok || echo MISSING ))"
+  echo "state:    $STATE_DIR"
+  command -v python3 >/dev/null && echo "python3: ok" || echo "python3: MISSING"
+  python3 -c 'import yaml' 2>/dev/null && echo "PyYAML: ok" || echo "PyYAML: MISSING (dnf install python3-pyyaml)"
+  command -v toolbox >/dev/null && echo "toolbox: ok" || echo "toolbox: MISSING"
+  command -v nvidia-smi >/dev/null && echo "nvidia-smi: ok ($(gpu_used) MiB)" || echo "nvidia-smi: missing"
+  local tb llama_dir binary
+  tb="$(py_get_default defaults.toolbox llm-cuda-f44)"
+  llama_dir="$(py_get_default defaults.llama_dir "")"
+  binary="$(py_get_default defaults.binary "")"
+  echo "toolbox name: $tb"
+  echo "llama_dir: $llama_dir ($( [[ -d $llama_dir ]] && echo ok || echo MISSING ))"
+  if [[ -n "$llama_dir" && -n "$binary" ]]; then
+    echo "binary: $llama_dir/$binary ($( [[ -x $llama_dir/$binary ]] && echo ok || echo missing/not-exec ))"
+  fi
+  echo
+  echo "profiles with GGUF present:"
+  list_profiles 0
+  echo
+  cmd_status 1
+}
+
+usage() {
+  cat <<EOF
+Usage: ${NAME} <command> [options]
+
+Commands:
+  list [--all]              list profiles with present GGUF (or --all)
+  status [--short]          show process/port/health/GPU
+  stop [--force]            unload model; free port/GPU (force steals stale lock)
+  start [--dry-run] <name>  stop existing if needed, then start profile
+  switch [--dry-run] <name> same as start
+  logs [N]                  tail last N server log lines (default 80)
+  hermes-hint [profile]     print Hermes provider settings
+  doctor                    check deps, paths, and profiles
+
+Profiles file: $PROFILES_YAML
+State/log:     $STATE_DIR
+
+Examples:
+  ${NAME} status --short
+  ${NAME} switch nemotron-30b-q4
+  ${NAME} switch --dry-run gpt-oss-128k
+  ${NAME} stop --force
+EOF
+}
+
+# --- arg parse ---
+cmd="${1:-}"
+shift || true
+FORCE=0
+DRY=0
+SHORT=0
+SHOW_ALL=0
+ARGS_REST=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE=1; shift ;;
+    --dry-run) DRY=1; shift ;;
+    --short) SHORT=1; shift ;;
+    --all) SHOW_ALL=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) ARGS_REST+=("$1"); shift ;;
+  esac
+done
+
+case "$cmd" in
+  list)
+    # list does not need exclusive lock
+    list_profiles "$SHOW_ALL"
+    ;;
+  status)
+    cmd_status "$SHORT"
+    ;;
+  logs)
+    cmd_logs "${ARGS_REST[0]:-80}"
+    ;;
+  hermes-hint)
+    print_hermes_hint "${ARGS_REST[0]:-}"
+    ;;
+  doctor)
+    cmd_doctor
+    ;;
+  stop)
+    acquire_lock "$FORCE"
+    stop_all "$FORCE"
+    ;;
+  start|switch)
+    [[ ${#ARGS_REST[@]} -ge 1 ]] || die "profile name required"
+    acquire_lock "$FORCE"
+    start_profile "${ARGS_REST[0]}" "$DRY"
+    ;;
+  -h|--help|help|"")
+    usage
+    ;;
+  *)
+    die "unknown command: $cmd (try ${NAME} --help)"
+    ;;
+esac
