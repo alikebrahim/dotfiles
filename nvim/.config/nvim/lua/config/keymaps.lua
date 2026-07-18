@@ -34,7 +34,13 @@ keymap.set("n", "+", "<C-a>")
 keymap.set("n", "-", "<C-x>")
 
 -- select all document
-keymap.set("n", "<leader>a", "gg<S-v>G")
+-- API-based to avoid snacks.scroll animating the cursor back mid-selection
+keymap.set("n", "<leader>a", function()
+  local last = vim.api.nvim_buf_line_count(0)
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  vim.cmd("normal! V")
+  vim.api.nvim_win_set_cursor(0, { last, 0 })
+end, { desc = "Select all" })
 
 -- Split Window
 keymap.set("n", "ss", ":split<Return>", opts)

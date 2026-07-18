@@ -7,7 +7,7 @@
 #   note <topic> [title]          # Create note in topic/
 #   note open                     # Fuzzy-find existing notes
 
-NOTES_DIR="${HOME}/Documents/notes"
+NOTES_DIR="${HOME}/Documents/obsidian-silo/axmi"
 DIARY_DIR="${NOTES_DIR}/diary"
 
 print_help() {
@@ -15,7 +15,7 @@ print_help() {
 Usage: note [topic] [note_name]
        note open
 
-Create and open markdown notes in ~/Documents/notes
+Create and open markdown notes in ~/Documents/obsidian-silo/axmi
 
 Arguments:
   topic          Optional topic/subdirectory for the note
@@ -57,13 +57,13 @@ resolve_target_file() {
 }
 
 note_fzf() {
-  local notes_dir="${HOME}/Documents/notes"
+  local notes_dir="${HOME}/Documents/obsidian-silo/axmi"
   local selection
 
   selection=$(
     cd "$notes_dir" || return 1
 
-    fd --type f --extension md | \
+    fd --type f --extension md |
       fzf \
         --height 70% --border \
         --prompt 'note> ' \
@@ -96,14 +96,14 @@ main() {
   local arg2="${2-}"
 
   case "$arg1" in
-    -h|--help)
-      print_help
-      return 0
-      ;;
-    open)
-      note_fzf
-      return 0
-      ;;
+  -h | --help)
+    print_help
+    return 0
+    ;;
+  open)
+    note_fzf
+    return 0
+    ;;
   esac
 
   local target_file

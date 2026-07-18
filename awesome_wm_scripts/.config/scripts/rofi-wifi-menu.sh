@@ -14,9 +14,7 @@ for cmd in rofi nmcli rfkill notify-send awk sort sed; do
   need "$cmd"
 done
 
-notify() {
-  notify-send "Wi-Fi" "$1" -t 1800
-}
+notify() { notify-send "Wi-Fi" "$1" -t 1800; }
 
 wifi_iface() {
   nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "wifi" {print $1; exit}'
@@ -44,40 +42,33 @@ rfkill_state() {
     /Soft blocked/ {soft=$2}
     /Hard blocked/ {hard=$2}
     END {
-      if (soft == "yes" || hard == "yes") printf " · blocked soft %s hard %s", soft, hard
+      if (soft == "yes" || hard == "yes") printf " · rfkill %s/%s", soft, hard
     }'
 }
 
 status_line() {
-  local iface radio ssid sig status rf
+  local iface radio ssid sig rf
   iface="$(wifi_iface)"
   radio="$(wifi_radio)"
   ssid="$(current_ssid)"
   sig="$(current_signal)"
   rf="$(rfkill_state)"
 
-  [[ -n $iface ]] || iface="no interface"
+  [[ -n $iface ]] || iface="no iface"
   if [[ $radio == "disabled" ]]; then
-    status="off"
+    printf '󰖪 %s · off%s' "$iface" "$rf"
   elif [[ -n $ssid ]]; then
-    status="connected $ssid"
-    [[ -n $sig ]] && status="$status · ${sig}%"
+    printf '󰖩 %s   ● %s · %s%%%s' "$iface" "$ssid" "${sig:-?}" "$rf"
   else
-    status="disconnected"
+    printf '󰖩 %s · disconnected%s' "$iface" "$rf"
   fi
-
-  printf '󰖩 Wi-Fi · %s · %s%s' "$iface" "$status" "$rf"
 }
 
 rofi_menu() {
-  local prompt="$1"
-  local message="$2"
   rofi -dmenu -i -no-custom \
-    -p "$prompt" \
-    -mesg "$message" \
-    -theme "$THEME" \
-    -kb-row-up "Up,Control+p" \
-    -kb-row-down "Down,Control+n"
+    -p "$1" -mesg "$2" -theme "$THEME" \
+    -kb-row-up "Up,Control+p" -kb-row-down "Down,Control+n" \
+    -theme-str 'window { width: 660px; }'
 }
 
 network_rows() {
@@ -105,6 +96,11 @@ password_prompt() {
   rofi -dmenu -password -p "Password" -mesg "󰖩 $ssid" -theme "$THEME" </dev/null
 }
 
+forget_network() {
+  local ssid="$1"
+  nmcli connection delete id "$ssid" 2>/dev/null && notify "Forgot $ssid"
+}
+
 manual_connect() {
   local iface ssid password
   iface="$(wifi_iface)"
@@ -112,8 +108,7 @@ manual_connect() {
   ssid="$(rofi -dmenu -p "SSID" -mesg "󰀦 Manual hidden network" -theme "$THEME" </dev/null)" || return 0
   [[ -n $ssid ]] || return 0
   password="$(password_prompt "$ssid")" || password=""
-  rfkill unblock wifi
-  nmcli radio wifi on
+  rfkill unblock wifi; nmcli radio wifi on
   if [[ -n $password ]]; then
     nmcli dev wifi connect "$ssid" password "$password" ifname "$iface" && notify "Connected to $ssid"
   else
@@ -129,8 +124,7 @@ connect_ssid() {
   security="$(printf '%s' "$row" | sed -E 's/^.* · [0-9]+% · //')"
   [[ -n $ssid ]] || return 0
 
-  rfkill unblock wifi
-  nmcli radio wifi on
+  rfkill unblock wifi; nmcli radio wifi on
 
   if known_connection "$ssid"; then
     nmcli connection up id "$ssid" && notify "Connected to $ssid"
@@ -147,25 +141,28 @@ connect_ssid() {
 }
 
 rescan_networks() {
-  local iface="$1"
-  rfkill unblock wifi
-  nmcli radio wifi on
+  local iface="$1" scan_pid
+  iface="${iface:-$(wifi_iface)}"
+  rfkill unblock wifi; nmcli radio wifi on
 
+  # Background scan while rofi shows scanning indicator
   (
     sleep 0.2
     nmcli dev wifi rescan ifname "$iface" >/dev/null 2>&1 || true
-    sleep 1
+    sleep 2
     pkill -u "$USER" -x rofi 2>/dev/null || true
   ) &
-  local scan_pid=$!
+  scan_pid=$!
 
   set +e
-  printf '󰑓  Scanning for networks...\n󰌑  This window will refresh automatically\n' | rofi_menu "Wi-Fi" "󰖩 Wi-Fi · scanning..."
+  printf '󰑓  Scanning for networks...\n󰌑  Press Esc to cancel\n' | \
+    rofi -dmenu -i -no-custom -p "Wi-Fi" -mesg "󰖩 Scanning..." \
+      -theme "$THEME" -theme-str 'window { width: 460px; }' \
+      -kb-row-up "Up,Control+p" -kb-row-down "Down,Control+n"
   set -e
 
   wait "$scan_pid" || true
-  "$0"
-  exit 0
+  exec "$0"
 }
 
 show_menu() {
@@ -180,17 +177,21 @@ show_menu() {
   fi
 
   if [[ $radio == "disabled" ]]; then
-    rows="󰖩  Turn Wi-Fi on
+    rows="󰖩  Turn Wi-Fi on"
+    rows="$rows
 󰀦  Manual hidden network"
   else
-    rows="󰖩  Rescan networks"
     if [[ -n $ssid ]]; then
-      rows="$rows
-󰤭  Disconnect Wi-Fi"
+      rows="󰖩  Disconnect · $ssid
+󰆴  Forget · $ssid
+────────────"
+    else
+      rows="󰑓  Rescan networks"
     fi
     rows="$rows
 󰖪  Turn Wi-Fi off
 󰀦  Manual hidden network
+────────────
 $(network_rows "$iface")"
   fi
 
@@ -198,14 +199,11 @@ $(network_rows "$iface")"
 
   case "${choice:-}" in
     *"Turn Wi-Fi on"*)
-      rfkill unblock wifi
-      nmcli radio wifi on
-      notify "Wi-Fi on"
+      rfkill unblock wifi; nmcli radio wifi on; notify "Wi-Fi on"
       exec "$0"
       ;;
     *"Turn Wi-Fi off"*)
-      nmcli radio wifi off
-      notify "Wi-Fi off"
+      nmcli radio wifi off; notify "Wi-Fi off"
       ;;
     *"Rescan networks"*)
       rescan_networks "$iface"
@@ -213,8 +211,11 @@ $(network_rows "$iface")"
     *"Manual hidden network"*)
       manual_connect
       ;;
-    *"Disconnect Wi-Fi"*)
+    *"Disconnect"*)
       nmcli device disconnect "$iface" && notify "Disconnected $iface"
+      ;;
+    *"Forget"*)
+      forget_network "$ssid"
       ;;
     [●○]*"󰖩"*)
       connect_ssid "$choice"

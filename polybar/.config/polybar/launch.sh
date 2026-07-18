@@ -3,7 +3,7 @@ set -euo pipefail
 
 LOG_FILE="/tmp/polybar-main.log"
 CONFIG_FILE="$HOME/.config/polybar/config.ini"
-PREFERRED_MONITOR="HDMI-0"
+PREFERRED_MONITOR="HDMI-1-0"
 BAR_NAME="main"
 
 log() {

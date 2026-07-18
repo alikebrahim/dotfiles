@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-QS_CONFIG="/home/alikebrahim/.dotfiles/quickshell_work/.config/shell.qml"
+QS_CONFIG="/home/alikebrahim/.dotfiles/quickshell/.config/quickshell/shell.qml"
 
 usage() {
   printf 'Usage: %s <percent> [muted]\n' "${0##*/}" >&2

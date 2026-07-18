@@ -201,3 +201,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export EDITOR=vim
 
 [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/alikebrahim/.local/bin:$PATH"

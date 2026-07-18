@@ -1,5 +1,5 @@
 configuration {
-    modi: "drun,window";
+    modi: "drun";
     icon-theme: "Papirus";
     show-icons: true;
     terminal: "wezterm";
@@ -8,10 +8,6 @@ configuration {
     disable-history: false;
     hide-scrollbar: true;
     display-drun: "   Apps ";
-    display-window: " 󱂬  Window ";
-    sidebar-mode: true;
-    kb-mode-next: "Shift+Right,Control+Tab";
-    kb-mode-previous: "Shift+Left,Control+Shift+Tab";
 }
 
 @theme "/dev/null"
@@ -33,7 +29,7 @@ configuration {
     text-color: @fg-col;
 }
 
-element-text, element-icon, mode-switcher {
+element-text, element-icon {
     background-color: inherit;
     text-color: inherit;
 }
@@ -50,7 +46,7 @@ window {
 
 mainbox {
     orientation: vertical;
-    children: [ "inputbar", "mode-switcher", "listview" ];
+    children: [ "inputbar", "listview" ];
     padding: 18px;
     spacing: 12px;
     background-color: transparent;
@@ -119,27 +115,6 @@ element-icon {
 element-text {
     vertical-align: 0.5;
     horizontal-align: 0.0;
-}
-
-mode-switcher {
-    spacing: 8px;
-}
-
-button {
-    padding: 8px 12px;
-    border-radius: 10px;
-    background-color: @surface-col;
-    text-color: @muted-col;
-    border: 1px;
-    border-color: transparent;
-    vertical-align: 0.5;
-    horizontal-align: 0.5;
-}
-
-button selected {
-    background-color: @selected-col;
-    text-color: @accent-col;
-    border-color: @accent-col;
 }
 
 message {

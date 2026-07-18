@@ -13,7 +13,7 @@ rows=$(cat <<'EOF'
 Launch        Super+Enter             Terminal
 Launch        Super+Shift+Enter       Browser
 Launch        Super+Space             Apps launcher
-Launch        Super+Tab               Window switcher
+Launch        Super+Tab               Window switcher [WS:SCREEN]
 Launch        Super+F                 Files
 Launch        Super+Grave             Scratchpad terminal
 

@@ -1,0 +1,7 @@
+{
+  "$comment": "Pinned apps for the Quick Apps menu (Mod+Shift+Space, decisions.md §8). Edit this file by hand to add/remove/reorder entries -- source of truth per decisions.md §8 choice A. 'id' should match a Quickshell DesktopEntries id (visible via the Launcher's app list); unresolvable ids are skipped with a console warning, not a crash. 'label' is what's shown when the .desktop entry's own name is undesired.",
+  "pinned": [
+    { "id": "org.wezfurlong.wezterm", "label": "Terminal" },
+    { "id": "google-chrome", "label": "Browser" }
+  ]
+}

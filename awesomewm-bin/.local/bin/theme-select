@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+THEME_LIB="$HOME/.dotfiles/themes/library"
+
+if [[ ! -d "$THEME_LIB" ]]; then
+    notify-send -u critical "Theme selector" "No theme library at $THEME_LIB on this host. See ~/.dotfiles/AGENTS.md (themes package is intentionally not synced fleet-wide)." 2>/dev/null || true
+    exit 1
+fi
+
+THEMES=$(ls "$THEME_LIB")
+
+if [[ -z "$THEMES" ]]; then
+    notify-send -u critical "Theme selector" "Theme library at $THEME_LIB is empty." 2>/dev/null || true
+    exit 1
+fi
+
+# Using rofi as a selector
+PICKED=$(echo "$THEMES" | rofi -dmenu -p "󰸉 Themes" -i -config ~/.config/rofi/config.rasi)
+
+if [[ -n "$PICKED" ]]; then
+    ~/.dotfiles/awesomewm-bin/theme-apply "$PICKED"
+fi

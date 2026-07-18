@@ -20,22 +20,8 @@ function rules.get(clientkeys, clientbuttons)
             }
         },
         {
-            rule = { class = "Polybar" },
-            properties = {
-                focusable = false,
-                focus = false,
-                border_width = 0
-            }
-        },
-        {
-            rule_any = { class = { "google-chrome", "Google-chrome" } },
-            properties = {
-                maximized = false,
-                floating = false
-            }
-        },
-        {
             rule_any = {
+                type = { "dialog" },
                 instance = { "copyq", "pinentry" },
                 class = { "Arandr", "Blueman-manager", "Pavucontrol", "Nm-connection-editor" },
                 name = { "Event Tester" },

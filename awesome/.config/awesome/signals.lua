@@ -12,8 +12,10 @@ function signals.setup()
 		return c.class == "Google-chrome" or c.class == "google-chrome" or c.class == "Google Chrome"
 	end
 
+	local chrome_startup_guard = setmetatable({}, { __mode = "k" })
+
 	local function force_chrome_tiled(c)
-		if not is_chrome(c) then
+		if not is_chrome(c) or c.type == "dialog" or c.transient_for then
 			return
 		end
 		c.fullscreen = false
@@ -26,14 +28,18 @@ function signals.setup()
 		c.below = false
 	end
 
-	local chrome_startup_guard = setmetatable({}, { __mode = "k" })
-
-	local function log_debug(msg)
-		local f = io.open("/tmp/awesome_floating_debug.log", "a")
-		if f then
-			f:write(os.date("%Y-%m-%d %H:%M:%S") .. " - " .. msg .. "\n")
-			f:close()
-		end
+	local function allow_chrome_transient(c)
+		if not c.valid or not is_chrome(c) or not c.transient_for then return end
+		chrome_startup_guard[c] = nil
+		c.floating = true
+		gears.timer.delayed_call(function()
+			if c.valid and c.transient_for then
+				awful.placement.centered(c, {
+					honor_padding = true,
+					honor_workarea = true,
+				})
+			end
+		end)
 	end
 
 	client.connect_signal("manage", function(c)
@@ -42,32 +48,17 @@ function signals.setup()
 		end
 
 		gears.timer.delayed_call(function()
-			if c.valid then
-				local s = c.screen
-				local wa = s.workarea or s.geometry
-				log_debug(string.format(
-					"MANAGE: class=%s instance=%s name=%s role=%s floating=%s x=%d y=%d w=%d h=%d workarea_top=%d padding_top=%d",
-					c.class or "nil",
-					c.instance or "nil",
-					c.name or "nil",
-					c.role or "nil",
-					tostring(c.floating),
-					c.x or 0, c.y or 0, c.width or 0, c.height or 0,
-					wa.y or 0,
-					(s.padding and s.padding.top) or 0
-				))
-
-				if c.floating then
-					awful.placement.centered(c, {
-						honor_padding = true,
-						honor_workarea = true
-					})
-					log_debug("  -> Applied centered placement (honor_padding + honor_workarea)")
-				end
+			if c.valid and c.floating then
+				awful.placement.centered(c, {
+					honor_padding = true,
+					honor_workarea = true
+				})
 			end
 		end)
 
-		if is_chrome(c) then
+		if is_chrome(c) and c.transient_for then
+			allow_chrome_transient(c)
+		elseif is_chrome(c) and c.type ~= "dialog" then
 			chrome_startup_guard[c] = true
 			gears.timer.delayed_call(function()
 				force_chrome_tiled(c)
@@ -77,6 +68,10 @@ function signals.setup()
 				return false
 			end)
 		end
+	end)
+
+	client.connect_signal("property::transient_for", function(c)
+		allow_chrome_transient(c)
 	end)
 
 	client.connect_signal("property::maximized", function(c)
@@ -100,40 +95,52 @@ function signals.setup()
 
 	-- Restore focus and workspace state after reload
 	gears.timer.delayed_call(function()
-		local f = io.open("/tmp/awesome_state", "r")
-		if f then
-			local lines = {}
-			for line in f:lines() do
-				table.insert(lines, line)
-			end
-			f:close()
-			os.remove("/tmp/awesome_state")
-
-			local focus_screen = tonumber(lines[1])
-			local focus_window = lines[2]
-
-			-- Restore tags per screen (starting from line 3)
-			for i = 1, screen.count() do
-				local tag_idx = tonumber(lines[i + 2])
-				if tag_idx and screen[i] and screen[i].tags[tag_idx] then
-					screen[i].tags[tag_idx]:view_only()
+		local ok, err = pcall(function()
+			local runtime_dir = os.getenv("XDG_RUNTIME_DIR") or gears.filesystem.get_cache_dir()
+			local state_path = runtime_dir .. "/awesome-state"
+			local f = io.open(state_path, "r")
+			if f then
+				local lines = {}
+				for line in f:lines() do
+					table.insert(lines, line)
 				end
-			end
+				f:close()
+				os.remove(state_path)
 
-			-- Restore screen focus
-			if focus_screen and screen[focus_screen] then
-				awful.screen.focus(screen[focus_screen])
-			end
+				local focus_screen = tonumber(lines[1])
+				local focus_window = lines[2]
 
-			-- Restore client focus
-			if focus_window ~= "nil" then
-				for _, c in ipairs(client.get()) do
-					if tostring(c.window) == focus_window then
-						client.focus = c
-						c:raise()
-						break
+				-- Restore tags per screen (starting from line 3)
+				for i = 1, screen.count() do
+					local tag_idx = tonumber(lines[i + 2])
+					if tag_idx and screen[i] and screen[i].tags[tag_idx] then
+						screen[i].tags[tag_idx]:view_only()
 					end
 				end
+
+				-- Restore screen focus
+				if focus_screen and screen[focus_screen] then
+					awful.screen.focus(screen[focus_screen])
+				end
+
+				-- Restore client focus
+				if focus_window ~= "nil" then
+					for _, c in ipairs(client.get()) do
+						if tostring(c.window) == focus_window then
+							client.focus = c
+							c:raise()
+							break
+						end
+					end
+				end
+			end
+		end)
+		if not ok then
+			local runtime_dir = os.getenv("XDG_RUNTIME_DIR") or gears.filesystem.get_cache_dir()
+			local log = io.open(runtime_dir .. "/awesome-state-restore-error.log", "w")
+			if log then
+				log:write(os.date("%Y-%m-%d %H:%M:%S") .. " - state restore error: " .. tostring(err) .. "\n")
+				log:close()
 			end
 		end
 	end)

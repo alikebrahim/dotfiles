@@ -33,6 +33,6 @@ case "$CHOICE" in
         ;;
 esac
 
-# Cleanup UI: Apply wallpaper and restart Polybar to match new screen geometry
-/home/alikebrahim/.config/polybar/launch.sh
+# Cleanup UI: Apply wallpaper. Polybar has been replaced by the native
+# AwesomeWM pill bar, which repositions itself via screen signals.
 feh --bg-fill /home/alikebrahim/Pictures/background.png /home/alikebrahim/Pictures/background.png

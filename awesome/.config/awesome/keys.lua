@@ -7,11 +7,14 @@ local keys = {}
 -- Spatial focus helpers.
 --
 -- Policy:
---   - tiled clients only: floating clients do not participate;
+--   - ordinary floating clients do not participate; maximized and fullscreen
+--     clients do, because Awesome marks them floating internally;
 --   - visible/current-tag clients only: no jumping to other workspaces;
 --   - minimized clients are ignored;
---   - maximized tiled clients still participate, but h/l from a maximized
---     client jumps to the previous/next screen immediately.
+--   - maximized and fullscreen clients still participate, but h/l from
+--     such a client jumps to the previous/next screen immediately;
+--   - when arriving at a target screen, a fullscreen or maximized client
+--     is preferred — it's the window the user actually sees.
 local function screen_sort_key(s)
     local g = s.geometry
     return g.x, g.y, s.index
@@ -45,7 +48,7 @@ local function is_spatial_focus_client(c)
         and c.valid
         and c.type ~= "desktop"
         and c.type ~= "dock"
-        and not c.floating
+        and (not c.floating or c.maximized or c.fullscreen)
         and not c.minimized
         and c:isvisible()
 end
@@ -91,6 +94,18 @@ local function focus_client(c)
     c:raise()
 end
 
+local function find_dominant_client(clients)
+    -- Return the fullscreen or maximized client from a list, if any.
+    -- Such a client occludes everything behind it on that screen, so it's
+    -- the window the user actually sees and expects to focus.
+    for _, c in ipairs(clients) do
+        if c.fullscreen or c.maximized then
+            return c
+        end
+    end
+    return nil
+end
+
 local function focus_screen_edge_client(from_screen, direction)
     local screens = sorted_screens()
     if #screens == 0 then return false end
@@ -110,7 +125,12 @@ local function focus_screen_edge_client(from_screen, direction)
 
         local clients = sorted_spatial_clients_for_screen(screens[target_index])
         if #clients > 0 then
-            if direction > 0 then
+            -- Prefer a fullscreen or maximized client: it's the visible
+            -- window the user sees, not whatever is behind it.
+            local dominant = find_dominant_client(clients)
+            if dominant then
+                focus_client(dominant)
+            elseif direction > 0 then
                 focus_client(clients[1])
             else
                 focus_client(clients[#clients])
@@ -126,7 +146,9 @@ local function focus_spatial(direction)
     local current = client.focus
     if not current or not current.valid then return end
 
-    if current.maximized then
+    -- When the current client is maximized or fullscreen, jump directly
+    -- to the edge client of the previous/next screen.
+    if current.maximized or current.fullscreen then
         if focus_screen_edge_client(current.screen, direction) then
             return
         end
@@ -141,17 +163,49 @@ local function focus_spatial(direction)
             if target_index < 1 then target_index = #clients end
             if target_index > #clients then target_index = 1 end
 
-            focus_client(clients[target_index])
+            local target = clients[target_index]
+            -- If crossing to a different screen, prefer that screen's
+            -- fullscreen/maximized client (the visible window).
+            if target.screen ~= current.screen then
+                local screen_clients = sorted_spatial_clients_for_screen(target.screen)
+                local dominant = find_dominant_client(screen_clients)
+                if dominant then target = dominant end
+            end
+
+            focus_client(target)
             return
         end
     end
 
     -- If the current client does not participate, e.g. it is floating, fall back
     -- to the nearest edge of the visible tiled set.
-    if direction > 0 then
-        focus_client(clients[1])
-    else
-        focus_client(clients[#clients])
+    local fallback = direction > 0 and clients[1] or clients[#clients]
+    if fallback then
+        local screen_clients = sorted_spatial_clients_for_screen(fallback.screen)
+        local dominant = find_dominant_client(screen_clients)
+        focus_client(dominant or fallback)
+    end
+end
+
+-- Set the same tag index as the "current" workspace on every screen at once.
+-- This is what makes workspace switching behave like a single desktop that
+-- spans all monitors (Pop!_OS/GNOME/Fedora style) instead of Awesome's default
+-- of independent per-screen workspace stacks.
+local function view_tag_index_all_screens(index)
+    for s in screen do
+        local tag = s.tags[index]
+        if tag then
+            tag:view_only()
+        end
+    end
+end
+
+local function toggle_tag_index_all_screens(index)
+    for s in screen do
+        local tag = s.tags[index]
+        if tag then
+            awful.tag.viewtoggle(tag)
+        end
     end
 end
 
@@ -202,6 +256,41 @@ local function view_workspace_relative_all_screens(direction)
     end)
 end
 
+-- Reuse the same synchronized workspace policy from bar mouse bindings.
+keys.view_tag_index_all_screens = view_tag_index_all_screens
+keys.toggle_tag_index_all_screens = toggle_tag_index_all_screens
+keys.view_workspace_relative_all_screens = view_workspace_relative_all_screens
+
+-- Screen detection by spatial position (left/right)
+local function get_screen_by_side(side)
+    if screen.count() == 0 then return nil end
+    if screen.count() == 1 then return screen[1] end
+    local screens = {}
+    for s in screen do table.insert(screens, s) end
+    table.sort(screens, function(a, b) return a.geometry.x < b.geometry.x end)
+    return side == "left" and screens[1] or screens[#screens]
+end
+
+-- Launch an app on a specific workspace/screen, switch there, and focus it
+local function launch_app(cmd, ws_idx, screen_side)
+    local target_screen = get_screen_by_side(screen_side)
+    if not target_screen then return end
+    local tag = target_screen.tags[ws_idx]
+    if not tag then return end
+    view_tag_index_all_screens(ws_idx)
+    awful.spawn(cmd, {
+        tag = tag,
+        screen = target_screen,
+        placement = awful.placement.no_overlap + awful.placement.no_offscreen,
+        callback = function(c)
+            if c and c.valid then
+                client.focus = c
+                c:raise()
+            end
+        end,
+    })
+end
+
 
 -- -----------------------------------------------------------------------------
 -- Global Keys
@@ -212,24 +301,29 @@ keys.globalkeys = gears.table.join(
   -- Launcher
   awful.key({ modkey }, "Return", function() awful.spawn(terminal) end, { description = "open terminal", group = "launcher" }),
   awful.key({ modkey, "Shift" }, "Return", function() awful.spawn(browser) end, { description = "open browser", group = "launcher" }),
-  awful.key({ modkey }, "Tab", function() awful.spawn("rofi -show window") end, { description = "window switcher", group = "launcher" }),
+  awful.key({ modkey }, "Tab", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-window-switcher.sh") end, { description = "window switcher [WS:SCREEN]", group = "launcher" }),
   awful.key({ modkey }, "space", function() awful.spawn("rofi -show drun") end, { description = "application launcher", group = "launcher" }),
+  awful.key({ "Mod1" }, "space", function() awesome.emit_signal("pillbar::toggle") end, { description = "toggle pill bar", group = "awesome" }),
   awful.key({ modkey }, "f", function() awful.spawn("nautilus") end, { description = "open files", group = "launcher" }),
   awful.key({ modkey }, "p", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-display-manager.sh") end, { description = "display manager", group = "launcher" }),
   awful.key({ modkey }, "u", function() awful.spawn("/home/alikebrahim/.config/scripts/wm-stabilize.sh") end, { description = "refresh monitors/UI", group = "awesome" }),
-  awful.key({ modkey }, "Escape", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-power-menu.sh") end, { description = "power menu", group = "awesome" }),
-  awful.key({ modkey, "Control" }, "t", function() awful.spawn("/home/alikebrahim/.dotfiles/awesomewm-bin/theme-select") end, { description = "theme selector", group = "launcher" }),
-  awful.key({ modkey, "Shift" }, "a", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-audio-menu.sh") end, { description = "audio controls", group = "launcher" }),
-  awful.key({ modkey, "Shift" }, "w", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-wifi-menu.sh") end, { description = "wi-fi controls", group = "launcher" }),
-  awful.key({ modkey, "Shift" }, "b", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-bluetooth-menu.sh") end, { description = "bluetooth controls", group = "launcher" }),
+  awful.key({ modkey }, "Escape", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-power-menu.sh") end, { description = "power menu", group = "awesome" }),  
+  awful.key({ modkey, "Shift" }, "a", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-audio-menu.sh") end, { description = "audio controls", group = "launcher" }),  
+  awful.key({ modkey, "Shift" }, "w", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-wifi-menu.sh") end, { description = "wi-fi controls", group = "launcher" }),  
+  awful.key({ modkey, "Shift" }, "b", function() awful.spawn("/home/alikebrahim/.config/scripts/rofi-bluetooth-menu.sh") end, { description = "bluetooth controls", group = "launcher" }),  
   awful.key({ modkey }, "grave", function() require("dynamism").term_scratch:toggle() end, { description = "toggle scratchpad", group = "launcher" }),
+
+  -- App launchers (pinned to workspaces, focus on open)
+  awful.key({ modkey }, "e", function() launch_app("proton-mail", 3, "right") end, { description = "launch Proton Mail (ws 3, right)", group = "launcher" }),
+  awful.key({ modkey }, "d", function() launch_app("/usr/bin/Discord", 2, "right") end, { description = "launch Discord (ws 2, right)", group = "launcher" }),
+  awful.key({ modkey }, "w", function() launch_app("google-chrome --app=https://web.whatsapp.com", 2, "left") end, { description = "launch WhatsApp (ws 2, left)", group = "launcher" }),
 
   -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
   awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
   awful.key({ modkey }, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh full") end, { description = "full screenshot", group = "screenshots" }),
   awful.key({ modkey, "Shift" }, "s", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "region screenshot", group = "screenshots" }),
 
-  awful.key({ modkey, "Shift" }, "space", function () awful.layout.inc( 1) end, {description = "select next layout", group = "layout"}),
+  awful.key({ modkey, "Shift" }, "space", function () awful.layout.inc( 1) end, {description = "select next layout", group = "layout"}),  
 
   -- Navigation (spatial focus across screens)
   awful.key({ modkey }, "h", function()
@@ -296,22 +390,30 @@ keys.globalkeys = gears.table.join(
       end
   end, {description = "move window to right screen", group = "screen"}),
 
-  awful.key({ modkey, "Shift" }, "k", function()
+  awful.key({ modkey, "Control", "Shift" }, "k", function()
       if client.focus then
           local t = client.focus.screen.tags[client.focus.screen.selected_tag.index + 1]
-          if t then client.focus:move_to_tag(t); t:view_only() end
+          if t then
+              client.focus:move_to_tag(t)
+              view_tag_index_all_screens(t.index)
+          end
       end
-  end, {description = "move client to next workspace and follow", group = "tag"}),
-  awful.key({ modkey, "Shift" }, "j", function()
+  end, {description = "move client to next workspace and follow (all screens)", group = "tag"}),
+  awful.key({ modkey, "Control", "Shift" }, "j", function()
       if client.focus then
           local t = client.focus.screen.tags[client.focus.screen.selected_tag.index - 1]
-          if t then client.focus:move_to_tag(t); t:view_only() end
+          if t then
+              client.focus:move_to_tag(t)
+              view_tag_index_all_screens(t.index)
+          end
       end
-  end, {description = "move client to previous workspace and follow", group = "tag"}),
+  end, {description = "move client to previous workspace and follow (all screens)", group = "tag"}),
 
   -- Reload / quit
   awful.key({ modkey, "Shift" }, "r", function()
-      local f = io.open("/tmp/awesome_state", "w")
+      local runtime_dir = os.getenv("XDG_RUNTIME_DIR") or gears.filesystem.get_cache_dir()
+      local state_path = runtime_dir .. "/awesome-state"
+      local f = io.open(state_path, "w")
       if f then
           -- Line 1: Screen Index
           f:write(awful.screen.focused().index .. "\n")
@@ -329,19 +431,14 @@ keys.globalkeys = gears.table.join(
 )
 
 -- Workspaces 1-5
+-- Viewing a workspace switches it on every screen at once (synced desktop
+-- model). Moving a client to a workspace only affects that client's own
+-- screen, since a client can only ever live on one screen's tag.
 for i = 1, 5 do
   keys.globalkeys = gears.table.join(keys.globalkeys,
     awful.key({ modkey }, "#" .. i + 9, function()
-      local screen = awful.screen.focused()
-      local tag = screen.tags[i]
-      if tag then tag:view_only() end
-    end, { description = "view workspace " .. i, group = "workspace" }),
-    awful.key({ modkey, "Shift" }, "#" .. i + 9, function()
-      if client.focus then
-        local tag = client.focus.screen.tags[i]
-        if tag then client.focus:move_to_tag(tag) end
-      end
-    end, { description = "move focused client to workspace " .. i, group = "workspace" })
+      view_tag_index_all_screens(i)
+    end, { description = "view workspace " .. i .. " (all screens)", group = "workspace" })
   )
 end
 

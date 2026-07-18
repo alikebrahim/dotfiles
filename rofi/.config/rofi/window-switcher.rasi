@@ -1,0 +1,126 @@
+/**
+ * Window switcher theme for rofi-window-switcher.sh.
+ * Single column, wider to fit [WS:SCREEN] Class — Title lines.
+ * Same color scheme as config.rasi.
+ */
+
+@theme "/dev/null"
+@import "colors.rasi"
+
+* {
+    bg-col: @bg;
+    surface-col: @surface;
+    surface-hover-col: @surface-hover;
+    selected-col: @selected;
+    accent-soft-col: @accent-soft;
+    border-col: @accent;
+    accent-col: @accent;
+    fg-col: @fg;
+    muted-col: @muted;
+    urgent-col: @urgent;
+    font: "JetBrainsMono Nerd Font 12";
+    background-color: transparent;
+    text-color: @fg-col;
+}
+
+element-text, element-icon, mode-switcher {
+    background-color: inherit;
+    text-color: inherit;
+}
+
+window {
+    width: 700px;
+    height: 420px;
+    border: 2px;
+    border-radius: 14px;
+    border-color: @border-col;
+    background-color: @bg-col;
+    transparency: "real";
+}
+
+mainbox {
+    orientation: vertical;
+    children: [ "inputbar", "message", "listview" ];
+    padding: 18px;
+    spacing: 12px;
+    background-color: transparent;
+    border-radius: 14px;
+}
+
+inputbar {
+    children: [ "prompt", "entry" ];
+    padding: 9px;
+    border-radius: 10px;
+    background-color: @surface-col;
+    border: 1px;
+    border-color: @accent-soft-col;
+}
+
+prompt {
+    padding: 5px 10px;
+    border-radius: 8px;
+    background-color: @accent-col;
+    text-color: @bg-col;
+}
+
+entry {
+    padding: 5px 8px;
+    text-color: @fg-col;
+    background-color: transparent;
+    placeholder-color: @muted-col;
+}
+
+message {
+    background-color: @surface-col;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px;
+    border-color: @accent-soft-col;
+}
+
+textbox {
+    text-color: @muted-col;
+    background-color: transparent;
+    font: "JetBrainsMono Nerd Font 10";
+}
+
+listview {
+    columns: 1;
+    lines: 10;
+    fixed-height: false;
+    dynamic: true;
+    cycle: true;
+    spacing: 6px;
+    background-color: transparent;
+}
+
+element {
+    padding: 8px 12px;
+    border-radius: 10px;
+    background-color: transparent;
+    border: 1px;
+    border-color: transparent;
+    text-color: @fg-col;
+}
+
+element normal active,
+element alternate active {
+    background-color: @accent-soft-col;
+    text-color: @accent-col;
+}
+
+element selected {
+    background-color: @selected-col;
+    text-color: @accent-col;
+    border-color: @accent-col;
+}
+
+element-icon {
+    size: 24px;
+    margin: 0px 8px 0px 0px;
+}
+
+element-text {
+    vertical-align: 0.5;
+    horizontal-align: 0.0;
+}

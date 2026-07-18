@@ -150,6 +150,7 @@ alias zsrc="source ~/.zshrc"
 alias vconf="nvim ~/.config/nvim"
 alias wconf="nvim ~/.config/wezterm/wezterm.lua"
 alias tconf="nvim ~/.tmux.conf"
+alias open="xdg-open"
 
 ## FILE SYSTEM NAVIGATION AND LISTING
 # -----------------------------------
@@ -295,3 +296,7 @@ export PATH=/home/alikebrahim/.bcode/bin:$PATH
 
 # opencode
 export PATH=/home/alikebrahim/.opencode/bin:$PATH
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/alikebrahim/.local/bin:$PATH"

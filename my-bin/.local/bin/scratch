@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# scratch — find, save, and display nvim scratchpad buffer(s)
+# Works locally or on any SSH-reachable host.
+#
+# Usage:
+#   scratch               Save and print local scratchpad
+#   scratch <host>        Save and print scratchpad on <host> via SSH
+#   scratch -c [host]     Also copy to clipboard
+#   scratch -q [host]     Quiet: clipboard only, suppress stdout
+#   scratch -h            Show this help
+
+set -euo pipefail
+
+_scratch_core() {
+    local sock_dir="/run/user/$(id -u)"
+    local -a files=() sockets=()
+
+    # Match WezTerm scratchpad pattern: /tmp/file<YYYYMMDD>-<HHMMSS>
+    # Tight pattern avoids matching the regex itself in SSH-transmitted function body
+    while IFS= read -r f; do [[ -n "$f" ]] && files+=("$f"); done < \
+        <(ps -eo args | grep '[n]vim' | grep -oE '/tmp/file[0-9]{8}-[0-9]{6}' | sort -u || true)
+
+    [[ ${#files[@]} -eq 0 ]] && { echo "scratch: no nvim scratchpad buffer found" >&2; return 1; }
+
+    while IFS= read -r s; do [[ -n "$s" ]] && sockets+=("$s"); done < \
+        <(find "$sock_dir" -maxdepth 1 -name 'nvim.*.0' -type s 2>/dev/null || true)
+
+    for s in "${sockets[@]+"${sockets[@]}"}"; do
+        [[ -S "$s" ]] || continue
+        nvim --server "$s" --remote-send ':w<CR>' 2>/dev/null || true
+        nvim --server "$s" --remote-expr '1'      >/dev/null 2>&1 || true
+    done
+
+    local multi=0; [[ ${#files[@]} -gt 1 ]] && multi=1
+    for file in "${files[@]}"; do
+        if [[ -f "$file" ]]; then
+            ((multi)) && echo "=== $file ==="
+            cat "$file"
+        else
+            for s in "${sockets[@]+"${sockets[@]}"}"; do
+                [[ -S "$s" ]] || continue
+                local content
+                content=$(nvim --server "$s" --remote-expr "join(getline(1,\"\$\"),\"\n\")" 2>/dev/null) && {
+                    ((multi)) && echo "=== $file (RPC) ==="
+                    printf '%s\n' "$content"
+                    break
+                }
+            done
+        fi
+    done
+}
+
+# ── Parse args ───────────────────────────────────────────────────────
+COPY=false; QUIET=false; HOST=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--copy)  COPY=true;  shift ;;
+        -q|--quiet) QUIET=true; COPY=true; shift ;;
+        -h|--help)  sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
+        -*)         echo "scratch: unknown option '$1'" >&2; exit 1 ;;
+        *)          HOST="$1"; shift ;;
+    esac
+done
+
+# ── Execute ──────────────────────────────────────────────────────────
+if [[ -n "$HOST" ]]; then
+    # Ship the function to the remote host via stdin (heredoc) and invoke it.
+    # This avoids all quoting issues — the function body goes over stdin,
+    # not as a command argument. bash -s reads from stdin.
+    output=$(ssh "$HOST" 'bash -s' <<_SCRATCH_EOF
+$(declare -f _scratch_core)
+_scratch_core
+_SCRATCH_EOF
+) || {
+        echo "scratch: SSH to $HOST failed" >&2; exit 1; }
+else
+    output=$(_scratch_core) || exit $?
+fi
+
+output="${output%$'\n'}"
+[[ -z "$output" ]] && { echo "scratch: could not read contents" >&2; exit 1; }
+
+$QUIET || printf '%s\n' "$output"
+
+if $COPY; then
+    if   command -v wl-copy >/dev/null 2>&1; then printf '%s' "$output" | wl-copy
+    elif command -v xclip   >/dev/null 2>&1; then printf '%s' "$output" | xclip -selection clipboard
+    elif command -v xsel    >/dev/null 2>&1; then printf '%s' "$output" | xsel --clipboard --input
+    else echo "scratch: no clipboard tool (wl-copy/xclip/xsel)" >&2
+    fi
+fi

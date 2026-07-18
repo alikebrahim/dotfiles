@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Obsidian
-Exec=obsidian --no-sandbox %u
+Exec=/usr/local/bin/obsidian --no-sandbox %u
 Terminal=false
 Type=Application
 Icon=obsidian

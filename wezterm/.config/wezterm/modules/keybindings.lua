@@ -83,7 +83,22 @@ function M.apply(config)
 	config.keys = keys
 
 	-- Key Tables for special modes
+
+	-- Copy mode: override y to copy without exiting or scrolling to bottom
+	local copy_mode = nil
+	if wezterm.gui then
+		copy_mode = wezterm.gui.default_key_tables().copy_mode
+		table.insert(copy_mode, {
+			key = "y", mods = "NONE",
+			action = act.Multiple({
+				act.CopyTo("ClipboardAndPrimarySelection"),
+				act.CopyMode("ClearSelectionMode"),
+			}),
+		})
+	end
+
 	config.key_tables = {
+		copy_mode = copy_mode,
 		resize_pane = {
 			{ key = "h", action = act.AdjustPaneSize({ "Left", 2 }) },
 			{ key = "j", action = act.AdjustPaneSize({ "Down", 2 }) },

@@ -21,7 +21,7 @@ if [ -n "$SSH_TTY" ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
   if [ -n "$LC_TMUX_DEVICE" ]; then
     DEVICE="$LC_TMUX_DEVICE"
   else
-    DEVICE="${SSH_CLIENT%% *}"
+    DEVICE="$(echo "${SSH_CLIENT%% *}" | tr '.' '-')"
   fi
 
   DEVICE_SESSION="${MAIN}-${DEVICE}"
@@ -45,3 +45,7 @@ if [ -n "$SSH_TTY" ] && [ -z "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
 
   exec tmux attach-session -t "$DEVICE_SESSION"
 fi
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/alikebrahim/.local/bin:$PATH"

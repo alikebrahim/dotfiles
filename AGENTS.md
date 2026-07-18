@@ -29,10 +29,14 @@ This repo is **synced across machines via Syncthing** and **backed up via git** 
 ### Stow package model
 
 - **GNU Stow 2.3.1** is installed fleet-wide. It has **no `--no-folding` flag** (added in 2.4.0).
-- Deployment is via `scripts/stow-host.sh` — detects hostname, unstows all packages, stows host-appropriate packages, installs system Xorg input policy, installs tmux plugins, reloads tmux.
+- **Deployment engine is `scripts/configure-host.sh`** (desired-state: tools, catalogued Stow packages, SSH overlay, system/user modules).
+- `scripts/stow-host.sh` is a **narrow compatibility wrapper** around `configure-host.sh --scope stow` only. Prefer `configure-host.sh` for full host setup.
+- Stow packages must be registered in `scripts/lib/stow-catalog.sh` and listed in `scripts/profiles/common.conf` and/or host `PROFILE_EXTRA_STOW_PACKAGES`.
 - Per-host SSH config overlays use `--dir=ssh` (e.g., `ssh/netmaster/`, `ssh/servalws/`).
 - Per-host tmux themes use base `tmux-remote/` + overlay `tmux-remote-HOST/` packages.
-- Run `bash ~/.dotfiles/scripts/stow-host.sh` AFTER Syncthing sync completes, not before.
+- Run `bash ~/.dotfiles/scripts/configure-host.sh plan` then `apply` AFTER Syncthing sync completes, not before.
+- Safe apply uses simulate-then-restow; `--adopt` / `--force` are refused. Explicit unstow is `configure-host prune --stow-package NAME` (double confirm).
+- Repo health: `bash ~/.dotfiles/scripts/configure-host.sh doctor`
 
 ### Tree folding — critical hazard
 
@@ -42,9 +46,10 @@ If `~/.local` gets tree-folded to `.dotfiles/my-bin/.local`, then all per-host r
 
 **Prevention (already in place):**
 - `my-bin/.stow-local-ignore` excludes `.local/share` and `.local/state` from Stow.
-- `stow-host.sh` creates `~/.local/state/` as a real directory before stowing `my-bin`, preventing tree folding.
-- `stow-host.sh` refuses to stow `my-bin` if `~/.local` is already a symlink (tree-folded).
+- `configure-host` / Stow helpers create `~/.local/state/` (and related safety dirs) as real directories before stowing, preventing tree folding.
+- Stow apply refuses to continue if `~/.local` (or other safety paths) is already a symlink (tree-folded).
 - `scripts/check-fold.sh` diagnoses folding across all hosts and can fix folded hosts with `--fix`.
+- `configure-host doctor` and `check` also report fold/Syncthing readiness notes.
 
 ### my-bin package boundaries
 
@@ -70,7 +75,7 @@ zotac-box has two users:
 - `alikebrahim` (uid 1001): primary, Syncthing runs here, dotfiles at `/home/alikebrahim/.dotfiles`
 - `tima` (uid 1000): secondary, accesses dotfiles via symlink through `shared` group
 
-The `stow-host.sh` script detects hostname only, not the running user. Both users get the same package list. tima's `~/.local/state/` must be a real dir (the safety check in `stow-host.sh` handles this).
+The `stow-host.sh` / `configure-host.sh` path detects hostname for package lists; zotac-box profile also branches on the running user for SSH overlay and extras. Both users get the same core package list. tima's `~/.local/state/` must be a real dir (the safety check in the Stow helpers handles this).
 
 ## General dotfiles workflow
 
