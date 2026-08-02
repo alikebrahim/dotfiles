@@ -1,7 +1,7 @@
 local awful = require("awful")
 local gtimer = require("gears.timer")
 local beautiful = require("beautiful")
-local naughty = require("naughty")
+local naughty = require("naughty.core")
 
 -- Use CLI backend as default as it is supported on most if not all systems
 local backend_config = beautiful.playerctl_backend or "playerctl_cli"

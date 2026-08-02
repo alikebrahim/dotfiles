@@ -23,6 +23,8 @@ if is_remote then
   }
 end
 
+vim.g.lazyvim_rust_diagnostics = "bacon-ls"
+
 opt.breakindent = true
 opt.wrap = true
 opt.clipboard = "unnamedplus"

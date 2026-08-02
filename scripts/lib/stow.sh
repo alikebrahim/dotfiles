@@ -91,7 +91,8 @@ stow_validate_package() {
 }
 
 # Load .stow-local-ignore as literal path prefixes/segments (repo convention).
-# Lines starting with '/' are treated as ERE against the relative path.
+# Anchored or slash-prefixed expressions are matched against /<relative-path>,
+# which mirrors GNU Stow's package-relative ignore boundary.
 _stow_load_ignore_patterns() {
     local package="$1"
     local ignore_file="${STOW_ROOT}/${package}/.stow-local-ignore"
@@ -112,10 +113,13 @@ _stow_path_is_ignored() {
     base="$(basename -- "$rel")"
     [[ "$base" == ".stow-local-ignore" ]] && return 0
     for pattern in "${STOW_IGNORE_PATTERNS[@]+"${STOW_IGNORE_PATTERNS[@]}"}"; do
+        if [[ "$pattern" == ^/* ]]; then
+            [[ "/$rel" =~ $pattern ]] && return 0
+            continue
+        fi
         if [[ "$pattern" == /* ]]; then
-            local ere="${pattern#/}"
-            ere="${ere%/}"
-            [[ "$rel" =~ $ere ]] && return 0
+            local ere="^${pattern}"
+            [[ "/$rel" =~ $ere ]] && return 0
             continue
         fi
         if [[ "$rel" == "$pattern" ||
@@ -140,6 +144,96 @@ stow_package_managed_files() {
         _stow_path_is_ignored "$rel" && continue
         printf '%s\n' "$rel"
     done < <(find "$source_dir" \( -type f -o -type l \) -print0 2>/dev/null)
+}
+
+# Print target-relative symlinks that still point into a selected package but no
+# longer have a source path. Limit scans to the package's two-component target
+# roots (for example .config/awesome or .local/bin), never the whole home tree.
+stow_package_orphaned_links() {
+    local package="$1"
+    local source_dir rel first remainder second prefix target_root target link_value resolved
+    local -A target_roots=()
+
+    source_dir="${STOW_ROOT}/${package}"
+    stow_package_exists "$package" || return "$EXIT_DRIFT"
+
+    while IFS= read -r rel; do
+        [[ "$rel" == */* ]] || continue
+        first="${rel%%/*}"
+        remainder="${rel#*/}"
+        second="${remainder%%/*}"
+        [[ -n "$first" && -n "$second" ]] || continue
+        target_roots["${first}/${second}"]=1
+    done < <(stow_package_managed_files "$package")
+
+    for prefix in "${!target_roots[@]}"; do
+        target_root="${STOW_HOME}/${prefix}"
+        [[ -d "$target_root" ]] || continue
+        while IFS= read -r -d '' target; do
+            link_value="$(readlink -- "$target" 2>/dev/null || true)"
+            [[ -n "$link_value" ]] || continue
+            if [[ "$link_value" == /* ]]; then
+                resolved="$(realpath -m -- "$link_value")"
+            else
+                resolved="$(realpath -m -- "$(dirname -- "$target")/${link_value}")"
+            fi
+            case "$resolved" in
+                "$source_dir"/*)
+                    rel="${resolved#${source_dir}/}"
+                    if [[ ! -e "${source_dir}/${rel}" && ! -L "${source_dir}/${rel}" ]]; then
+                        printf '%s\n' "${target#${STOW_HOME}/}"
+                    fi
+                    ;;
+            esac
+        done < <(find "$target_root" -type l -print0 2>/dev/null)
+    done
+}
+
+# Remove only dangling target symlinks that are still verified to resolve inside
+# the selected package and whose corresponding source path is absent. The target
+# root is the trusted user's Stow home; this intentionally does not claim safety
+# against a concurrent same-user pathname replacement race (GNU Stow has the same
+# local-user trust boundary).
+stow_remove_orphaned_links() {
+    local package="$1"
+    local source_dir rel target link_value resolved source_rel
+    local orphaned_links=()
+
+    source_dir="${STOW_ROOT}/${package}"
+    mapfile -t orphaned_links < <(stow_package_orphaned_links "$package")
+    for rel in "${orphaned_links[@]}"; do
+        target="${STOW_HOME}/${rel}"
+        if [[ ! -L "$target" ]]; then
+            printf '%s orphan target changed before cleanup: %s\n' "$STATUS_BLOCKED" "$target" >&2
+            return "$EXIT_BLOCKED"
+        fi
+        link_value="$(readlink -- "$target" 2>/dev/null || true)"
+        [[ -n "$link_value" ]] || {
+            printf '%s cannot read orphan target: %s\n' "$STATUS_BLOCKED" "$target" >&2
+            return "$EXIT_BLOCKED"
+        }
+        if [[ "$link_value" == /* ]]; then
+            resolved="$(realpath -m -- "$link_value")"
+        else
+            resolved="$(realpath -m -- "$(dirname -- "$target")/${link_value}")"
+        fi
+        case "$resolved" in
+            "$source_dir"/*)
+                source_rel="${resolved#${source_dir}/}"
+                if [[ -e "${source_dir}/${source_rel}" || -L "${source_dir}/${source_rel}" ]]; then
+                    printf '%s orphan source reappeared before cleanup: %s\n' \
+                        "$STATUS_BLOCKED" "${source_dir}/${source_rel}" >&2
+                    return "$EXIT_BLOCKED"
+                fi
+                ;;
+            *)
+                printf '%s orphan target escaped selected package: %s\n' "$STATUS_BLOCKED" "$target" >&2
+                return "$EXIT_BLOCKED"
+                ;;
+        esac
+        rm -- "$target"
+        printf '%s removed package-owned orphan link: %s\n' "$STATUS_CHANGED" "$rel"
+    done
 }
 
 # Print conflict lines: CONFLICT <rel> -> <target> (<reason>)
@@ -230,6 +324,7 @@ stow_apply_packages() {
             [[ $rc -eq "$EXIT_DRIFT" ]] && continue
             return "$rc"
         }
+        stow_remove_orphaned_links "$package" || return $?
         stow_simulate_package "$package" || return $?
         if ! output="$(stow_command -R "$package" 2>&1)"; then
             printf '%s restow failed for package: %s\n' "$STATUS_BLOCKED" "$package" >&2
@@ -295,7 +390,8 @@ stow_list_all_packages() {
 stow_package_status() {
     local package="$1"
     local source_dir rel target
-    local total=0 linked=0 missing=0 conflicts=0
+    local total=0 linked=0 missing=0 conflicts=0 orphaned=0
+    local orphaned_links=()
 
     if ! stow_package_exists "$package"; then
         printf '%s %s\n' "$STATUS_ABSENT" "$package"
@@ -318,11 +414,14 @@ stow_package_status() {
         fi
     done < <(stow_package_managed_files "$package")
 
+    mapfile -t orphaned_links < <(stow_package_orphaned_links "$package")
+    orphaned="${#orphaned_links[@]}"
+
     if (( total == 0 )); then
         printf '%s %s has no managed files\n' "$STATUS_BLOCKED" "$package"
         return "$EXIT_BLOCKED"
     fi
-    if (( linked == total )); then
+    if (( linked == total && orphaned == 0 )); then
         printf '%s %s (%d/%d linked)\n' "$STATUS_CURRENT" "$package" "$linked" "$total"
         return "$EXIT_OK"
     fi
@@ -330,7 +429,7 @@ stow_package_status() {
         printf '%s %s (0/%d linked)\n' "$STATUS_ABSENT" "$package" "$total"
         return "$EXIT_DRIFT"
     fi
-    printf '%s %s (%d/%d linked, %d missing, %d conflicts)\n' \
-        "$STATUS_DRIFT" "$package" "$linked" "$total" "$missing" "$conflicts"
+    printf '%s %s (%d/%d linked, %d missing, %d conflicts, %d orphaned links)\n' \
+        "$STATUS_DRIFT" "$package" "$linked" "$total" "$missing" "$conflicts" "$orphaned"
     return "$EXIT_DRIFT"
 }

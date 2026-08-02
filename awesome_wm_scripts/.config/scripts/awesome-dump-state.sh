@@ -20,7 +20,7 @@ fi
 
 echo
 echo "== Key processes =="
-for proc in awesome polybar picom dunst xss-lock; do
+for proc in awesome quickshell picom xss-lock; do
   echo "-- $proc --"
   pgrep -a "$proc" || echo "not running"
 done
@@ -42,15 +42,20 @@ else
 fi
 
 echo
-echo "== Polybar logs, last 10 lines each =="
-shopt -s nullglob
-logs=(/tmp/polybar-*.log /tmp/polybar-main.log)
-if [ "${#logs[@]}" -eq 0 ]; then
-  echo "no polybar logs found"
+echo "== Quickshell status =="
+if command -v quickshell >/dev/null 2>&1; then
+  quickshell --path "$HOME/.config/quickshell/shell.qml" ipc call shell status 2>&1 || true
 else
-  for log in "${logs[@]}"; do
-    [ -e "$log" ] || continue
-    echo "-- $log --"
-    tail -n 10 "$log" || true
+  echo "quickshell: not found"
+fi
+
+echo
+echo "== Quickshell D-Bus ownership =="
+if command -v busctl >/dev/null 2>&1; then
+  for name in org.freedesktop.Notifications org.kde.StatusNotifierWatcher; do
+    echo "-- $name --"
+    busctl --user --no-pager status "$name" 2>&1 | head -n 10 || true
   done
+else
+  echo "busctl: not found"
 fi

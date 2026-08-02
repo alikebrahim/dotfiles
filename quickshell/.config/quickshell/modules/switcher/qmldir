@@ -1,0 +1,2 @@
+module modules.switcher
+WindowSwitcher 1.0 WindowSwitcher.qml

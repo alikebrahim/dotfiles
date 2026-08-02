@@ -6,7 +6,15 @@ local rules = {}
 function rules.get(clientkeys, clientbuttons)
     return {
         {
-            rule = {},
+            rule_any = {
+                type = { "dialog", "normal", "splash", "utility" },
+            },
+            except_any = {
+                class = { "quickshell-shell" },
+                instance = { "quickshell-shell" },
+                name = { "quickshell-shell" },
+                type = { "desktop", "dock" },
+            },
             properties = {
                 border_width = beautiful.border_width,
                 border_color = beautiful.border_normal,
@@ -14,10 +22,45 @@ function rules.get(clientkeys, clientbuttons)
                 raise = true,
                 keys = clientkeys,
                 buttons = clientbuttons,
-                screen = awful.screen.preferred,
-                placement = awful.placement.no_overlap + awful.placement.no_offscreen,
                 titlebars_enabled = false
             }
+        },
+        {
+            rule_any = {
+                class = { "quickshell-shell" },
+                instance = { "quickshell-shell" },
+                name = { "quickshell-shell" },
+                type = { "dock" },
+            },
+            properties = {
+                border_width = 0,
+                floating = true,
+                sticky = true,
+                skip_taskbar = true,
+                titlebars_enabled = false,
+            },
+        },
+        {
+            rule_any = {
+                name = {
+                    "quickshell-application-launcher",
+                    "quickshell-window-switcher",
+                    "quickshell-session-menu",
+                    "quickshell-calendar",
+                    "quickshell-keybind-help",
+                    "quickshell-display-manager",
+                },
+            },
+            properties = {
+                border_width = 0,
+                floating = true,
+                sticky = true,
+                skip_taskbar = true,
+                ontop = true,
+                focus = true,
+                raise = true,
+                titlebars_enabled = false,
+            },
         },
         {
             rule_any = {

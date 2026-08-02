@@ -1,2 +1,20 @@
-singleton Theme 1.0 Theme.qml
-singleton BridgeState 1.0 BridgeState.qml
+module services
+ShellState 1.0 ShellState.qml
+AwesomeBridge 1.0 AwesomeBridge.qml
+AwesomeActionService 1.0 AwesomeActionService.qml
+CommandTransport 1.0 CommandTransport.qml
+ModalController 1.0 ModalController.qml
+BarPopoutController 1.0 BarPopoutController.qml
+SessionActionService 1.0 SessionActionService.qml
+AudioService 1.0 AudioService.qml
+NetworkService 1.0 NetworkService.qml
+BluetoothService 1.0 BluetoothService.qml
+MediaService 1.0 MediaService.qml
+NotificationService 1.0 NotificationService.qml
+DbusOwnershipService 1.0 DbusOwnershipService.qml
+TailscaleService 1.0 TailscaleService.qml
+X11ClipboardService 1.0 X11ClipboardService.qml
+WeatherService 1.0 WeatherService.qml
+PowerService 1.0 PowerService.qml
+BrightnessService 1.0 BrightnessService.qml
+DisplayService 1.0 DisplayService.qml

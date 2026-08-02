@@ -17,6 +17,9 @@ PROJECT_TEMPLATE="${NOTES_DIR}/templates/user/project.md"
 AXMI_RECORDS_MCP_SERVER="${HOME}/.hermes/profiles/axmi/axmi-records-mcp/server.py"
 MCP_TIMEOUT_SECONDS="${MCP_TIMEOUT_SECONDS:-30}"
 NOTE_EDITOR="${NOTE_EDITOR:-${EDITOR:-nvim}}"
+# The cabinet invokes a local MCP server and therefore must not resolve its
+# interpreter through an arbitrary caller-controlled PATH.
+PYTHON_BIN='/usr/bin/python3'
 
 print_help() {
   cat <<'EOF'
@@ -68,6 +71,24 @@ require_command() {
   }
 }
 
+ensure_bash_version() {
+  ((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 3))) || {
+    printf 'note: Bash 4.3 or newer is required (found %s)\n' "${BASH_VERSION}" >&2
+    return 1
+  }
+}
+
+ensure_python() {
+  [[ -x "$PYTHON_BIN" ]] || {
+    printf 'note: required Python interpreter is unavailable: %s\n' "$PYTHON_BIN" >&2
+    return 1
+  }
+  "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' || {
+    printf 'note: Python 3.11 or newer is required: %s\n' "$PYTHON_BIN" >&2
+    return 1
+  }
+}
+
 ensure_interactive() {
   [[ -t 0 && -t 1 ]] || {
     printf 'note: an interactive terminal is required. Use note --help for commands.\n' >&2
@@ -94,20 +115,35 @@ ensure_editor() {
 
 ensure_cabinet_dependencies() {
   local command_name
-  for command_name in gum fzf fd rg bat python3; do
+  for command_name in gum fzf fd rg bat; do
     require_command "$command_name" || return 1
   done
 }
 
 valid_note_name() {
-  local note_name="$1"
-  [[ "$note_name" != *$'\n'* && "$note_name" != *$'\r'* ]]
+  "$PYTHON_BIN" - "$1" <<'PY'
+import sys
+
+raise SystemExit(1 if any(ord(character) < 32 or ord(character) == 127 for character in sys.argv[1]) else 0)
+PY
+}
+
+terminal_display_text() {
+  "$PYTHON_BIN" - "$1" <<'PY'
+import sys
+
+text = sys.argv[1]
+print("".join(
+    " " if character in "\t\n\r" else "�" if ord(character) < 32 or ord(character) == 127 else character
+    for character in text
+), end="")
+PY
 }
 
 resolve_vault_markdown_path() {
   local relative_path="$1"
 
-  python3 - "$NOTES_DIR" "$relative_path" <<'PY'
+  "$PYTHON_BIN" - "$NOTES_DIR" "$relative_path" <<'PY'
 import sys
 from pathlib import Path
 
@@ -143,7 +179,8 @@ secure_install_vault_file() {
   local relative_path="$1"
   local source_file="$2"
 
-  python3 - "$NOTES_DIR" "$relative_path" "$source_file" <<'PY'
+  "$PYTHON_BIN" - "$NOTES_DIR" "$relative_path" "$source_file" <<'PY'
+import fcntl
 import os
 import secrets
 import stat
@@ -181,6 +218,7 @@ def main():
     source_fd = os.open(source_text, os.O_RDONLY | os.O_CLOEXEC | no_follow)
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | no_follow)
     parent_fd = os.dup(root_fd)
+    parent_locked = False
     temporary_name = None
     temporary_fd = None
     try:
@@ -191,6 +229,8 @@ def main():
             next_fd = open_directory(parent_fd, part)
             os.close(parent_fd)
             parent_fd = next_fd
+        fcntl.flock(parent_fd, fcntl.LOCK_EX)
+        parent_locked = True
 
         final_name = relative.parts[-1]
         try:
@@ -244,11 +284,18 @@ def main():
                 raise ValueError("destination appeared and is not a regular file")
             return "exists", identity(existing)
 
-        final_stat = os.stat(final_name, dir_fd=parent_fd, follow_symlinks=False)
-        if identity(final_stat) != identity(installed_stat):
-            raise RuntimeError("installed file identity changed during commit")
-        os.fsync(parent_fd)
-        return "created", identity(installed_stat)
+        committed_identity = identity(installed_stat)
+        try:
+            final_stat = os.stat(final_name, dir_fd=parent_fd, follow_symlinks=False)
+            if identity(final_stat) != committed_identity:
+                raise RuntimeError("installed file identity changed during commit")
+            os.fsync(parent_fd)
+        except (OSError, RuntimeError):
+            # The hard link committed, but the post-commit verification or
+            # durability acknowledgement did not. Let the caller attempt an
+            # identity-guarded recovery instead of reporting a phantom failure.
+            return "created-pending", committed_identity
+        return "created", committed_identity
     finally:
         if temporary_fd is not None:
             os.close(temporary_fd)
@@ -257,6 +304,8 @@ def main():
                 os.unlink(temporary_name, dir_fd=parent_fd)
             except FileNotFoundError:
                 pass
+        if parent_locked:
+            fcntl.flock(parent_fd, fcntl.LOCK_UN)
         os.close(parent_fd)
         os.close(root_fd)
         os.close(source_fd)
@@ -274,9 +323,10 @@ secure_remove_vault_file() {
   local relative_path="$1"
   local expected_identity="$2"
 
-  python3 - "$NOTES_DIR" "$relative_path" "$expected_identity" <<'PY'
+  "$PYTHON_BIN" - "$NOTES_DIR" "$relative_path" "$expected_identity" <<'PY'
 import ctypes
 import errno
+import fcntl
 import os
 import secrets
 import stat
@@ -326,8 +376,12 @@ def main():
     device_text, inode_text = expected_identity.split(":", 1)
     expected = (int(device_text), int(inode_text))
 
+    def is_expected(file_stat):
+        return stat.S_ISREG(file_stat.st_mode) and (file_stat.st_dev, file_stat.st_ino) == expected
+
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | no_follow)
     parent_fd = os.dup(root_fd)
+    parent_locked = False
     try:
         for part in relative.parts[:-1]:
             try:
@@ -340,7 +394,18 @@ def main():
                 return "missing", ""
             os.close(parent_fd)
             parent_fd = next_fd
+        # Secure install uses the same per-directory advisory lock. It
+        # serializes all note-managed writers while identity is checked and
+        # the rollback rename/unlink sequence is in progress.
+        fcntl.flock(parent_fd, fcntl.LOCK_EX)
+        parent_locked = True
         final_name = relative.parts[-1]
+        try:
+            current = os.stat(final_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return "missing", ""
+        if not is_expected(current):
+            return "changed", ""
 
         quarantine_name = None
         for _ in range(20):
@@ -357,24 +422,25 @@ def main():
             raise RuntimeError("could not allocate a unique rollback quarantine name")
 
         quarantined = os.stat(quarantine_name, dir_fd=parent_fd, follow_symlinks=False)
-        if stat.S_ISREG(quarantined.st_mode) and (quarantined.st_dev, quarantined.st_ino) == expected:
-            os.unlink(quarantine_name, dir_fd=parent_fd)
+        if not is_expected(quarantined):
+            try:
+                rename_noreplace(parent_fd, quarantine_name, parent_fd, final_name)
+            except (FileExistsError, OSError):
+                os.fsync(parent_fd)
+                retained_path = str(relative.parent / quarantine_name)
+                return "changed-retained", retained_path
             os.fsync(parent_fd)
-            return "removed", ""
+            return "changed", ""
 
+        os.unlink(quarantine_name, dir_fd=parent_fd)
         try:
-            rename_noreplace(parent_fd, quarantine_name, parent_fd, final_name)
-        except FileExistsError:
             os.fsync(parent_fd)
-            retained_path = str(relative.parent / quarantine_name)
-            return "changed-retained", retained_path
         except OSError:
-            os.fsync(parent_fd)
-            retained_path = str(relative.parent / quarantine_name)
-            return "changed-retained", retained_path
-        os.fsync(parent_fd)
-        return "changed", ""
+            return "removed-pending", ""
+        return "removed", ""
     finally:
+        if parent_locked:
+            fcntl.flock(parent_fd, fcntl.LOCK_UN)
         os.close(parent_fd)
         os.close(root_fd)
 
@@ -385,6 +451,52 @@ except Exception as error:
     raise SystemExit(1)
 print(f"{outcome}\t{detail}")
 PY
+}
+
+parse_secure_install_result() {
+  "$PYTHON_BIN" - "$1" <<'PY'
+import re
+import sys
+
+lines = sys.argv[1].splitlines()
+if len(lines) != 1:
+    raise ValueError("secure install returned more than one result line")
+fields = lines[0].split("\t")
+if len(fields) != 2 or fields[0] not in {"created", "created-pending", "exists"}:
+    raise ValueError("secure install returned an unknown outcome")
+if not re.fullmatch(r"[0-9]+:[0-9]+", fields[1]):
+    raise ValueError("secure install returned an invalid file identity")
+print("\t".join(fields))
+PY
+}
+
+parse_secure_remove_result() {
+  "$PYTHON_BIN" - "$1" <<'PY'
+import sys
+
+lines = sys.argv[1].splitlines()
+if len(lines) != 1:
+    raise ValueError("secure rollback returned more than one result line")
+fields = lines[0].split("\t")
+if len(fields) != 2 or fields[0] not in {"removed", "removed-pending", "missing", "changed", "changed-retained"}:
+    raise ValueError("secure rollback returned an unknown outcome")
+if any(ord(character) < 32 or ord(character) == 127 for character in fields[1]):
+    raise ValueError("secure rollback returned unsafe detail text")
+if fields[0] == "changed-retained" and not fields[1]:
+    raise ValueError("secure rollback did not report the retained path")
+if fields[0] != "changed-retained" and fields[1]:
+    raise ValueError("secure rollback returned unexpected detail text")
+print("\t".join(fields))
+PY
+}
+
+secure_rollback_result() {
+  local relative_path="$1"
+  local expected_identity="$2"
+  local raw_result
+
+  raw_result="$(secure_remove_vault_file "$relative_path" "$expected_identity")" || return 1
+  parse_secure_remove_result "$raw_result"
 }
 
 creation_name_required() {
@@ -401,7 +513,7 @@ daily_note_contents() {
   local note_date="$1"
   local note_name="$2"
 
-  python3 - "$DAILY_TEMPLATE" "$note_date" "$note_name" <<'PY'
+  "$PYTHON_BIN" - "$DAILY_TEMPLATE" "$note_date" "$note_name" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -420,7 +532,7 @@ diary_note_contents() {
   local note_date="$1"
   local note_name="$2"
 
-  python3 - "$note_date" "$note_name" <<'PY'
+  "$PYTHON_BIN" - "$note_date" "$note_name" <<'PY'
 import json
 import sys
 
@@ -441,7 +553,7 @@ PY
 project_creation_plan() {
   local title="$1"
 
-  python3 - "$title" <<'PY'
+  "$PYTHON_BIN" - "$title" <<'PY'
 import re
 import sys
 import unicodedata
@@ -460,7 +572,7 @@ render_project_template() {
   local project_type="$1"
   local title="$2"
 
-  python3 - "$PROJECT_TEMPLATE" "$project_type" "$title" <<'PY'
+  "$PYTHON_BIN" - "$PROJECT_TEMPLATE" "$project_type" "$title" <<'PY'
 import re
 import sys
 from pathlib import Path
@@ -542,14 +654,16 @@ validate_created_project() {
   local validation_response get_payload record_response
 
   validation_response="$(mcp_call_tool validate_axmi_vault '{}')" || return 1
-  get_payload="$(python3 - "$project_id" <<'PY'
+  validation_response="$(mcp_single_json_object "$validation_response")" || return 1
+  get_payload="$("$PYTHON_BIN" - "$project_id" <<'PY'
 import json
 import sys
 print(json.dumps({"record_id": sys.argv[1]}))
 PY
 )" || return 1
   record_response="$(mcp_call_tool get_axmi_record "$get_payload")" || return 1
-  python3 - "$validation_response" "$record_response" "$project_id" "$record_path" <<'PY'
+  record_response="$(mcp_single_json_object "$record_response")" || return 1
+  "$PYTHON_BIN" - "$validation_response" "$record_response" "$project_id" "$record_path" <<'PY'
 import json
 import sys
 
@@ -575,14 +689,14 @@ create_project_note() {
   local rollback_result rollback_outcome rollback_detail
 
   valid_note_name "$title" || {
-    ui_message 'A Project name cannot contain a line break.'
+    ui_message 'A Project name cannot contain terminal control characters.'
     return 1
   }
   [[ -n "${title//[[:space:]]/}" ]] || {
     ui_message 'A Project needs a name before it can be created.'
     return 1
   }
-  [[ -f "$PROJECT_TEMPLATE" ]] || {
+  [[ -r "$PROJECT_TEMPLATE" ]] || {
     printf 'note: missing Project template: %s\n' "$PROJECT_TEMPLATE" >&2
     return 1
   }
@@ -604,7 +718,11 @@ create_project_note() {
   install_status=$?
   rm -f -- "$temporary_file"
   ((install_status == 0)) || {
-    ui_message "Project could not be installed safely: ${record_path}"
+    ui_message "Project install failed before commit could be confirmed: ${record_path}"
+    return 1
+  }
+  install_result="$(parse_secure_install_result "$install_result")" || {
+    ui_message 'Project installation returned an invalid safety result. No editor was opened.'
     return 1
   }
   IFS=$'\t' read -r install_outcome installed_identity <<<"$install_result"
@@ -614,14 +732,35 @@ create_project_note() {
     return 1
     ;;
   created) ;;
-  *)
-    printf 'note: malformed secure-install result for Project: %s\n' "$install_result" >&2
+  created-pending)
+    rollback_result="$(secure_rollback_result "$record_path" "$installed_identity")" || {
+      ui_message 'Project installation reached the destination but could not be confirmed or safely recovered. No editor was opened.'
+      return 1
+    }
+    IFS=$'\t' read -r rollback_outcome rollback_detail <<<"$rollback_result"
+    case "$rollback_outcome" in
+    removed)
+      ui_message 'Project installation could not be confirmed; the created file was safely removed.'
+      ;;
+    removed-pending)
+      ui_message 'Project installation could not be confirmed; cleanup ran, but directory durability could not be confirmed.'
+      ;;
+    changed)
+      ui_message 'Project installation could not be confirmed; a replacement was left untouched.'
+      ;;
+    changed-retained)
+      ui_message "Project installation could not be confirmed; a concurrent replacement was retained at: ${rollback_detail}"
+      ;;
+    missing)
+      ui_message 'Project installation could not be confirmed; the created file was already absent.'
+      ;;
+    esac
     return 1
     ;;
   esac
 
   if ! validate_created_project "$project_id" "$record_path"; then
-    rollback_result="$(secure_remove_vault_file "$record_path" "$installed_identity")" || {
+    rollback_result="$(secure_rollback_result "$record_path" "$installed_identity")" || {
       ui_message 'Project validation failed, and secure rollback could not confirm file ownership. No pathname was deleted.'
       return 1
     }
@@ -629,6 +768,9 @@ create_project_note() {
     case "$rollback_outcome" in
     removed)
       ui_message 'Project creation was rolled back because canonical validation failed.'
+      ;;
+    removed-pending)
+      ui_message 'Project validation failed; cleanup ran, but directory durability could not be confirmed.'
       ;;
     changed)
       ui_message 'Project validation failed, but the installed path held a replacement. The replacement was restored and left untouched.'
@@ -663,11 +805,27 @@ write_content_if_missing() {
   install_status=$?
   rm -f -- "$temporary_file"
   ((install_status == 0)) || return 1
+  install_result="$(parse_secure_install_result "$install_result")" || {
+    printf 'note: malformed secure-install result for dated note\n' >&2
+    return 1
+  }
   IFS=$'\t' read -r install_outcome installed_identity <<<"$install_result"
   case "$install_outcome" in
   created | exists) return 0 ;;
-  *)
-    printf 'note: malformed secure-install result for dated note: %s\n' "$install_result" >&2
+  created-pending)
+    local rollback_result rollback_outcome rollback_detail
+    rollback_result="$(secure_rollback_result "$relative_path" "$installed_identity")" || {
+      printf 'note: dated note installation reached the destination but could not be confirmed or safely recovered\n' >&2
+      return 1
+    }
+    IFS=$'\t' read -r rollback_outcome rollback_detail <<<"$rollback_result"
+    case "$rollback_outcome" in
+    removed) printf 'note: dated note installation could not be confirmed; the created file was safely removed\n' >&2 ;;
+    removed-pending) printf 'note: dated note cleanup ran, but directory durability could not be confirmed\n' >&2 ;;
+    changed) printf 'note: dated note installation could not be confirmed; a replacement was left untouched\n' >&2 ;;
+    changed-retained) printf 'note: dated note installation could not be confirmed; a replacement was retained at: %s\n' "$rollback_detail" >&2 ;;
+    missing) printf 'note: dated note installation could not be confirmed; the file was already absent\n' >&2 ;;
+    esac
     return 1
     ;;
   esac
@@ -693,7 +851,7 @@ create_dated_note() {
   local note_date record_path
 
   valid_note_name "$note_name" || {
-    ui_message 'A note name cannot contain a line break.'
+    ui_message 'A note name cannot contain terminal control characters.'
     return 1
   }
   ensure_editor || return 1
@@ -701,6 +859,10 @@ create_dated_note() {
   note_date="$(date +%F)"
   case "$note_type" in
   daily)
+    [[ -r "$DAILY_TEMPLATE" ]] || {
+      printf 'note: missing daily template: %s\n' "$DAILY_TEMPLATE" >&2
+      return 1
+    }
     record_path="daily/${note_date}.md"
     write_content_if_missing "$record_path" daily_note_contents "$note_date" "$note_name" || return 1
     ;;
@@ -720,7 +882,7 @@ create_dated_note() {
 print_mcp_error_file() {
   local error_file="$1"
 
-  python3 - "$error_file" <<'PY'
+  "$PYTHON_BIN" - "$error_file" <<'PY'
 import sys
 from pathlib import Path
 
@@ -746,7 +908,7 @@ mcp_call_tool() {
   }
 
   error_file="$(mktemp "${TMPDIR:-/tmp}/note-mcp.XXXXXX")" || return 1
-  if ! output="$(python3 - "$AXMI_RECORDS_MCP_SERVER" "$tool_name" "$arguments_json" "$NOTES_DIR" "$MCP_TIMEOUT_SECONDS" 2>"$error_file" <<'PY'
+  if ! output="$("$PYTHON_BIN" - "$AXMI_RECORDS_MCP_SERVER" "$tool_name" "$arguments_json" "$NOTES_DIR" "$MCP_TIMEOUT_SECONDS" 2>"$error_file" <<'PY'
 import asyncio
 import json
 import math
@@ -767,14 +929,15 @@ try:
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise ValueError("MCP timeout must be a finite positive number")
 
-    allowed_environment = {"PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR"}
+    allowed_environment = {"HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR"}
     environment = {
         key: value
         for key, value in os.environ.items()
         if key in allowed_environment or key.startswith("XDG_")
     }
+    environment["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     environment["AXMI_VAULT_ROOT"] = vault_root
-    params = StdioServerParameters(command="python3", args=[server_path], env=environment)
+    params = StdioServerParameters(command=sys.executable, args=[server_path], env=environment)
 
     async def call_tool():
         tool_error = ""
@@ -783,7 +946,9 @@ try:
             async with ClientSession(reader, writer) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
-                response_text = "".join(getattr(item, "text", "") for item in result.content)
+                response_text = "".join(getattr(item, "text", "") for item in (getattr(result, "content", None) or []))
+                if not response_text and getattr(result, "structuredContent", None) is not None:
+                    response_text = json.dumps(result.structuredContent, ensure_ascii=False)
                 if result.isError:
                     tool_error = response_text or f"{tool_name} failed"
         return tool_error, response_text
@@ -833,7 +998,7 @@ PY
 mcp_json_items() {
   local response_text="$1"
 
-  python3 - "$response_text" <<'PY'
+  "$PYTHON_BIN" - "$response_text" <<'PY'
 import json
 import sys
 
@@ -854,11 +1019,38 @@ while index < len(text):
 PY
 }
 
+mcp_single_json_object() {
+  local response_text="$1"
+
+  "$PYTHON_BIN" - "$response_text" <<'PY'
+import json
+import sys
+
+text = sys.argv[1]
+decoder = json.JSONDecoder()
+index = 0
+items = []
+while index < len(text):
+    while index < len(text) and text[index].isspace():
+        index += 1
+    if index >= len(text):
+        break
+    item, index = decoder.raw_decode(text, index)
+    if isinstance(item, dict) and isinstance(item.get("result"), list):
+        items.extend(item["result"])
+    else:
+        items.append(item)
+if len(items) != 1 or not isinstance(items[0], dict):
+    raise ValueError("MCP response must contain exactly one JSON object")
+print(json.dumps(items[0], ensure_ascii=False))
+PY
+}
+
 project_reference_choices() {
   local search_response
 
   search_response="$(mcp_call_tool search_axmi_records '{"kind":"project","limit":200}')" || return 1
-  python3 - "$search_response" "$NOTES_DIR" <<'PY'
+  "$PYTHON_BIN" - "$search_response" "$NOTES_DIR" <<'PY'
 import json
 import re
 import sys
@@ -866,6 +1058,16 @@ from pathlib import Path
 
 text, root_text = sys.argv[1:]
 root = Path(root_text).resolve()
+
+def safe_display(value):
+    return "".join(
+        " " if character in "\t\n\r" else "�" if ord(character) < 32 or ord(character) == 127 else character
+        for character in value
+    )
+
+def safe_path(value):
+    return not any(ord(character) < 32 or ord(character) == 127 for character in value)
+
 decoder = json.JSONDecoder()
 index = 0
 records = []
@@ -888,7 +1090,9 @@ for record in records:
     record_id = str(record.get("id", ""))
     relpath = str(record.get("path", ""))
     metadata = record.get("metadata", {})
-    if not record_id.startswith("proj-") or not relpath:
+    if not record_id.startswith("proj-") or not relpath or not isinstance(metadata, dict):
+        continue
+    if not safe_path(record_id) or not safe_path(relpath):
         continue
     candidate = (root / relpath).resolve()
     try:
@@ -897,16 +1101,20 @@ for record in records:
         continue
     if not candidate.is_file():
         continue
-    content = candidate.read_text(encoding="utf-8")
+    try:
+        content = candidate.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        continue
     marker = content.find("\n---\n", 4) if content.startswith("---\n") else -1
     body = content[marker + 5:] if marker >= 0 else content
-    title = " ".join(str(metadata.get("title", record_id)).split())
+    title = safe_display(" ".join(str(metadata.get("title", record_id)).split()))
     project_type = metadata.get("project_type", "standard")
     heading = "Hypothesis" if project_type == "experiment" else "Outcome"
     match = re.search(rf"^## {re.escape(heading)}\s*\n+(.*?)(?=^## |\Z)", body, re.MULTILINE | re.DOTALL)
     description = " ".join(match.group(1).split()) if match else ""
     if not description:
         description = f"No {heading} description yet"
+    description = safe_display(description)
     if len(description) > 118:
         description = description[:115].rstrip() + "..."
     print(f"{record_id}\t{title} · {heading}: {description}")
@@ -917,30 +1125,41 @@ canonical_reference_choices() {
   local kind="$1"
   local search_payload search_response
 
-  search_payload="$(python3 - "$kind" <<'PY'
+  search_payload="$("$PYTHON_BIN" - "$kind" <<'PY'
 import json
 import sys
 print(json.dumps({"kind": sys.argv[1], "limit": 200}))
 PY
 )" || return 1
   search_response="$(mcp_call_tool search_axmi_records "$search_payload")" || return 1
-  mcp_json_items "$search_response" | python3 -c '
+  mcp_json_items "$search_response" | "$PYTHON_BIN" -c '
 import json
 import sys
+
+def safe_display(value):
+    return "".join(
+        " " if character in "\t\n\r" else "�" if ord(character) < 32 or ord(character) == 127 else character
+        for character in value
+    )
+
 for line in sys.stdin:
     if not line.strip():
         continue
     record = json.loads(line)
-    metadata = record.get("metadata", {})
-    record_id = str(record.get("id", ""))
-    if not record_id:
+    if not isinstance(record, dict):
         continue
-    title = " ".join(str(metadata.get("title", record_id)).split())
+    metadata = record.get("metadata", {})
+    if not isinstance(metadata, dict):
+        continue
+    record_id = str(record.get("id", ""))
+    if not record_id or any(ord(character) < 32 or ord(character) == 127 for character in record_id):
+        continue
+    title = safe_display(" ".join(str(metadata.get("title", record_id)).split()))
     kind = metadata.get("kind", "record")
     if kind == "agenda":
-        details = ", ".join(value for value in (metadata.get("agenda_type", ""), metadata.get("priority", "")) if value)
+        details = ", ".join(safe_display(str(value)) for value in (metadata.get("agenda_type", ""), metadata.get("priority", "")) if value)
     else:
-        details = ", ".join(value for value in (metadata.get("status", ""), metadata.get("area", "")) if value)
+        details = ", ".join(safe_display(str(value)) for value in (metadata.get("status", ""), metadata.get("area", "")) if value)
     suffix = f": {details}" if details else ""
     print(f"{record_id}\t{title}{suffix}")
 '
@@ -948,14 +1167,6 @@ for line in sys.stdin:
 
 agenda_reference_choices() {
   canonical_reference_choices agenda
-}
-
-seed_reference_choices() {
-  canonical_reference_choices seed
-}
-
-learning_reference_choices() {
-  canonical_reference_choices learning
 }
 
 select_reference_id() {
@@ -971,7 +1182,7 @@ select_reference_id() {
   }
   ordered_choices="$choices"
   if [[ -n "$current_reference" ]]; then
-    ordered_choices="$(printf '%s\n' "$choices" | python3 -c '
+    ordered_choices="$(printf '%s\n' "$choices" | "$PYTHON_BIN" -c '
 import sys
 current = sys.argv[1]
 lines = [line.rstrip("\n") for line in sys.stdin if line.strip()]
@@ -1002,26 +1213,34 @@ select_project_reference() {
     "$current_reference"
 }
 
-select_seed_reference() {
-  local current_reference="${1:-}"
-  local choices
-  choices="$(seed_reference_choices)" || return 1
-  select_reference_id \
-    'AGENDA · Select a Seed' \
-    "$choices" \
-    'No canonical Seeds are available to reference.' \
-    "$current_reference"
-}
+prompt_external_scope_target() {
+  local scope="$1"
+  local current_target="${2:-}"
+  local label placeholder pattern target
 
-select_learning_reference() {
-  local current_reference="${1:-}"
-  local choices
-  choices="$(learning_reference_choices)" || return 1
-  select_reference_id \
-    'AGENDA · Select a Learning record' \
-    "$choices" \
-    'No canonical Learning records are available to reference.' \
-    "$current_reference"
+  case "$scope" in
+  seed)
+    label='Seed'
+    placeholder='Existing Seed ID (for example: seed-example)'
+    pattern='^seed-[a-z0-9]+(-[a-z0-9]+)*$'
+    ;;
+  learning)
+    label='Learning record'
+    placeholder='Existing Learning ID (for example: learn-example)'
+    pattern='^learn-[a-z0-9]+(-[a-z0-9]+)*$'
+    ;;
+  *)
+    printf 'note: unsupported external Agenda scope: %s\n' "$scope" >&2
+    return 1
+    ;;
+  esac
+
+  target="$(prompt_text "AGENDA · ${label} reference" "$placeholder" "$current_target")" || return 1
+  valid_note_name "$target" && [[ "$target" =~ $pattern ]] || {
+    ui_message "${label} reference must match the expected canonical ID format."
+    return 1
+  }
+  printf '%s\n' "$target"
 }
 
 select_agenda_reference() {
@@ -1064,6 +1283,10 @@ validate_agenda_configuration() {
     ;;
   esac
 
+  valid_note_name "$scope_target" && valid_note_name "$related_reference" || {
+    printf 'note: Agenda references cannot contain terminal control characters\n' >&2
+    return 1
+  }
   if [[ "$scope" == global ]]; then
     [[ -z "$scope_target" ]] || {
       printf 'note: global Agenda scope must not have a target\n' >&2
@@ -1105,7 +1328,7 @@ build_agenda_payload() {
   validate_agenda_configuration \
     "$agenda_type" "$scope" "$scope_target" "$priority" "$related_reference" || return 1
 
-  python3 - "$title" "$agenda_type" "$scope" "$scope_target" "$priority" "$related_reference" <<'PY'
+  "$PYTHON_BIN" - "$title" "$agenda_type" "$scope" "$scope_target" "$priority" "$related_reference" <<'PY'
 import json
 import sys
 
@@ -1137,16 +1360,53 @@ PY
 created_record_reference() {
   local response_json="$1"
 
-  python3 - "$response_json" <<'PY'
+  response_json="$(mcp_single_json_object "$response_json")" || return 1
+  "$PYTHON_BIN" - "$response_json" <<'PY'
+import json
+import re
+import sys
+
+response = json.loads(sys.argv[1])
+record_id = response.get("id")
+path = response.get("path")
+if not isinstance(record_id, str) or not re.fullmatch(r"ag-[0-9]{4}-[0-9]{4}", record_id):
+    raise ValueError("MCP response did not include a valid Agenda id")
+expected_path = f"agenda/{record_id}.md"
+if path != expected_path:
+    raise ValueError("MCP response did not include the expected Agenda path")
+print(f"{record_id}\t{path}")
+PY
+}
+
+verify_canonical_record() {
+  local record_id="$1"
+  local expected_kind="$2"
+  local expected_path="${3:-}"
+  local payload response
+
+  payload="$("$PYTHON_BIN" - "$record_id" <<'PY'
+import json
+import sys
+print(json.dumps({"record_id": sys.argv[1]}))
+PY
+)" || return 1
+  response="$(mcp_call_tool get_axmi_record "$payload")" || return 1
+  response="$(mcp_single_json_object "$response")" || return 1
+  "$PYTHON_BIN" - "$response" "$record_id" "$expected_kind" "$expected_path" <<'PY'
 import json
 import sys
 
 response = json.loads(sys.argv[1])
-record_id = response["id"]
-path = response["path"]
-if not isinstance(record_id, str) or not isinstance(path, str):
-    raise ValueError("MCP response did not include a record id and path")
-print(f"{record_id}\t{path}")
+record_id, expected_kind, expected_path = sys.argv[2:]
+metadata = response.get("metadata")
+if not isinstance(metadata, dict):
+    raise ValueError("canonical record response is missing metadata")
+if response.get("id") != record_id:
+    raise ValueError("canonical record response returned a different id")
+if metadata.get("kind") != expected_kind:
+    raise ValueError(f"canonical record is not a {expected_kind}")
+if expected_path and response.get("path") != expected_path:
+    raise ValueError("canonical record response returned an unexpected path")
 PY
 }
 
@@ -1157,19 +1417,39 @@ create_agenda_record() {
   local scope_target="$4"
   local priority="$5"
   local related_reference="$6"
-  local payload response
+  local payload response record_reference record_id record_path
 
   valid_note_name "$title" || {
-    ui_message 'An Agenda item name cannot contain a line break.'
+    ui_message 'An Agenda item name cannot contain terminal control characters.'
     return 1
   }
   [[ -n "${title//[[:space:]]/}" ]] || {
     ui_message 'An Agenda item needs a name before it can be created.'
     return 1
   }
+  validate_agenda_configuration \
+    "$agenda_type" "$scope" "$scope_target" "$priority" "$related_reference" || return 1
+  if [[ "$scope" == project ]]; then
+    verify_canonical_record "$scope_target" project || {
+      ui_message 'The selected Project is no longer a valid canonical Project. Reconfigure the Agenda item.'
+      return 1
+    }
+  fi
+  if [[ -n "$related_reference" ]]; then
+    verify_canonical_record "$related_reference" agenda || {
+      ui_message 'The selected related Agenda item is no longer available. Reconfigure the Agenda item.'
+      return 1
+    }
+  fi
   payload="$(build_agenda_payload "$title" "$agenda_type" "$scope" "$scope_target" "$priority" "$related_reference")" || return 1
   response="$(mcp_call_tool new_axmi_record "$payload")" || return 1
-  created_record_reference "$response"
+  record_reference="$(created_record_reference "$response")" || return 1
+  IFS=$'\t' read -r record_id record_path <<<"$record_reference"
+  verify_canonical_record "$record_id" agenda "$record_path" || {
+    ui_message 'Agenda creation returned an unverified record. No editor was opened.'
+    return 1
+  }
+  printf '%s\n' "$record_reference"
 }
 
 open_created_record() {
@@ -1322,10 +1602,10 @@ configure_agenda_details() {
     scope_target="$(select_project_reference "$preferred_target")" || return 1
     ;;
   seed)
-    scope_target="$(select_seed_reference "$preferred_target")" || return 1
+    scope_target="$(prompt_external_scope_target seed "$preferred_target")" || return 1
     ;;
   learning)
-    scope_target="$(select_learning_reference "$preferred_target")" || return 1
+    scope_target="$(prompt_external_scope_target learning "$preferred_target")" || return 1
     ;;
   esac
 
@@ -1392,7 +1672,7 @@ new_note_workspace() {
       if valid_note_name "$action"; then
         note_name="$action"
       else
-        ui_message 'A note name cannot contain a line break.'
+        ui_message 'A note name cannot contain terminal control characters.'
       fi
       ;;
     'Configure details')
@@ -1482,33 +1762,48 @@ choose_browse_scope() {
 
 browse_candidates() {
   local scope="$1"
+  local -a command=(fd --type f --extension md --print0)
 
   case "$scope" in
   all)
-    fd --type f --extension md \
-      --exclude diary \
-      --exclude .project \
-      --exclude .obsidian \
-      --exclude templates \
+    command+=(
+      --exclude diary
+      --exclude .project
+      --exclude .obsidian
+      --exclude templates
       --exclude agent
+    )
     ;;
-  daily)
-    if [[ -d daily ]]; then fd --type f --extension md . daily; fi
-    ;;
-  diary)
-    if [[ -d diary ]]; then fd --type f --extension md . diary; fi
-    ;;
-  agenda)
-    if [[ -d agenda ]]; then fd --type f --extension md . agenda; fi
-    ;;
-  projects)
-    if [[ -d records/projects ]]; then fd --type f --extension md . records/projects; fi
+  daily) [[ -d daily ]] || return 0; command+=(. daily) ;;
+  diary) [[ -d diary ]] || return 0; command+=(. diary) ;;
+  agenda) [[ -d agenda ]] || return 0; command+=(. agenda) ;;
+  projects) [[ -d records/projects ]] || return 0; command+=(. records/projects) ;;
+  *)
+    printf 'note: unsupported browse scope: %s\n' "$scope" >&2
+    return 2
     ;;
   esac
+
+  "${command[@]}" | "$PYTHON_BIN" -c '
+import os
+import sys
+
+skipped = 0
+for raw_path in sys.stdin.buffer.read().split(b"\0"):
+    if not raw_path:
+        continue
+    path = os.fsdecode(raw_path)
+    if any(ord(character) < 32 or ord(character) == 127 for character in path):
+        skipped += 1
+        continue
+    print(path)
+if skipped:
+    print(f"note: skipped {skipped} note path(s) with terminal control characters", file=sys.stderr)
+'
 }
 
 browse_notes() {
-  local scope selection candidates
+  local scope selection candidates fzf_status
   scope="$(choose_browse_scope)" || return 0
 
   if ! candidates="$(
@@ -1523,15 +1818,28 @@ browse_notes() {
     return 0
   }
 
-  selection="$(printf '%s\n' "$candidates" |
-    fzf \
-      --height '70%' \
-      --border=rounded \
-      --prompt 'browse> ' \
-      --header "BROWSE · ${scope} · type to filter paths · Enter opens · Esc/Ctrl-Q exits" \
-      --bind 'ctrl-q:abort,esc:abort' \
-      --preview 'bat --color=always --style=numbers --line-range :180 -- {}' \
-      --preview-window 'right,60%,wrap')" || return 0
+  selection="$(
+    cd "$NOTES_DIR" || exit 1
+    printf '%s\n' "$candidates" |
+      fzf \
+        --height '70%' \
+        --border=rounded \
+        --prompt 'browse> ' \
+        --header "BROWSE · ${scope} · type to filter paths · Enter opens · Esc/Ctrl-Q exits" \
+        --bind 'ctrl-q:abort,esc:abort' \
+        --preview 'bat --color=always --style=numbers --line-range :180 -- {}' \
+        --preview-window 'right,60%,wrap'
+  )"
+  fzf_status=$?
+  if ((fzf_status != 0)); then
+    case "$fzf_status" in
+    1 | 130) return 0 ;;
+    *)
+      ui_message "Browse selector failed (fzf exit ${fzf_status})."
+      return 1
+      ;;
+    esac
+  fi
 
   [[ -n "$selection" ]] && open_vault_markdown_note "$selection"
 }
@@ -1601,11 +1909,17 @@ search_candidates() {
   fi
   [[ -n "$first_candidate" ]] || return 0
 
-  "${command[@]}" -- "$query" "${paths[@]}" | python3 -c '
+  "${command[@]}" -- "$query" "${paths[@]}" | "$PYTHON_BIN" -c '
 import base64
 import json
 import os
 import sys
+
+def safe_display(value):
+    return "".join(
+        " " if character in "\t\n\r" else "�" if ord(character) < 32 or ord(character) == 127 else character
+        for character in value
+    )
 
 for raw_line in sys.stdin:
     event = json.loads(raw_line)
@@ -1617,11 +1931,13 @@ for raw_line in sys.stdin:
         path = path_data["text"]
     else:
         path = os.fsdecode(base64.b64decode(path_data["bytes"]))
+    if any(ord(character) < 32 or ord(character) == 127 for character in path):
+        continue
     line_number = data["line_number"]
     text = data["lines"].get("text")
     if text is None:
         text = os.fsdecode(base64.b64decode(data["lines"]["bytes"]))
-    display_text = " ".join(text.replace("\t", " ").splitlines())
+    display_text = safe_display(" ".join(text.replace("\t", " ").splitlines()))
     print(f"{path}\t{line_number}\t{display_text}")
 '
   pipeline_status=("${PIPESTATUS[@]}")
@@ -1635,10 +1951,14 @@ for raw_line in sys.stdin:
 }
 
 search_notes() {
-  local scope query selection file_name line_number matches match_text
+  local scope query selection file_name line_number matches match_text fzf_status
   scope="$(choose_search_scope)" || return 0
   query="$(prompt_text "SEARCH · ${scope}" 'Literal words from inside a note' '')" || return 0
   [[ -n "${query//[[:space:]]/}" ]] || return 0
+  valid_note_name "$query" || {
+    ui_message 'Search text cannot contain terminal control characters.'
+    return 1
+  }
 
   if ! matches="$(
     cd "$NOTES_DIR" || exit 1
@@ -1652,17 +1972,30 @@ search_notes() {
     return 0
   }
 
-  selection="$(printf '%s\n' "$matches" |
-    fzf \
-      --height '70%' \
-      --border=rounded \
-      --prompt 'match> ' \
-      --header "SEARCH · ${scope} · literal: ${query} · Enter opens · Esc/Ctrl-Q exits" \
-      --bind 'ctrl-q:abort,esc:abort' \
-      --delimiter $'\t' \
-      --with-nth=1,2,3 \
-      --preview 'bat --color=always --style=numbers --highlight-line {2} --line-range :220 -- {1}' \
-      --preview-window 'right,60%,+{2}+3/3,wrap')" || return 0
+  selection="$(
+    cd "$NOTES_DIR" || exit 1
+    printf '%s\n' "$matches" |
+      fzf \
+        --height '70%' \
+        --border=rounded \
+        --prompt 'match> ' \
+        --header "SEARCH · ${scope} · literal: ${query} · Enter opens · Esc/Ctrl-Q exits" \
+        --bind 'ctrl-q:abort,esc:abort' \
+        --delimiter $'\t' \
+        --with-nth=1,2,3 \
+        --preview 'bat --color=always --style=numbers --highlight-line {2} --line-range :220 -- {1}' \
+        --preview-window 'right,60%,+{2}+3/3,wrap'
+  )"
+  fzf_status=$?
+  if ((fzf_status != 0)); then
+    case "$fzf_status" in
+    1 | 130) return 0 ;;
+    *)
+      ui_message "Search selector failed (fzf exit ${fzf_status})."
+      return 1
+      ;;
+    esac
+  fi
 
   [[ -n "$selection" ]] || return 0
   IFS=$'\t' read -r file_name line_number match_text <<<"$selection"
@@ -1698,25 +2031,53 @@ main() {
   local arg2="${2:-}"
   local vault_file
 
+  if (($# > 2)); then
+    printf 'note: unexpected extra arguments; quote multi-word note names\n\n' >&2
+    print_help >&2
+    return 2
+  fi
+
   case "$arg1" in
   -h | --help)
+    if (($# != 1)); then
+      printf 'note: --help does not accept a note name\n' >&2
+      return 2
+    fi
     print_help
     return 0
     ;;
   esac
 
+  ensure_bash_version || return 1
+  ensure_python || return 1
+  [[ -z "$arg2" ]] || valid_note_name "$arg2" || {
+    printf 'note: note names cannot contain terminal control characters\n' >&2
+    return 2
+  }
   ensure_interactive || return 1
 
   case "$arg1" in
   '')
+    [[ -z "$arg2" ]] || {
+      printf 'note: the interactive home screen does not accept a note name\n' >&2
+      return 2
+    }
     ensure_cabinet_dependencies || return 1
     home_cabinet
     ;;
   open | browse)
+    [[ -z "$arg2" ]] || {
+      printf 'note: %s does not accept a note name\n' "$arg1" >&2
+      return 2
+    }
     ensure_cabinet_dependencies || return 1
     browse_notes
     ;;
   search)
+    [[ -z "$arg2" ]] || {
+      printf 'note: search does not accept a note name\n' >&2
+      return 2
+    }
     ensure_cabinet_dependencies || return 1
     search_notes
     ;;
@@ -1728,6 +2089,14 @@ main() {
     new_note_workspace "$arg1" "$arg2"
     ;;
   *)
+    [[ -z "$arg2" ]] || {
+      printf 'note: opening a vault-relative file does not accept a note name\n' >&2
+      return 2
+    }
+    valid_note_name "$arg1" || {
+      printf 'note: vault-relative paths cannot contain terminal control characters\n' >&2
+      return 2
+    }
     vault_file="$(resolve_vault_markdown_path "$arg1")" || {
       printf 'note: unknown command or invalid vault-relative Markdown file: %s\n\n' "$arg1" >&2
       print_help >&2

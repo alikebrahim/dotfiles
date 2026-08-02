@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Diagnose Window Manager component status on servalws.
-# Checks: running processes, installed binaries, config symlinks,
-#          awesome config validity, script references, theme system.
+# Checks: current Quickshell/Awesome processes, source links, IPC, D-Bus
+# ownership, bridge state, active helpers, and retired-runtime absence.
 #
 # Run ON servalws:  bash ~/.dotfiles/scripts/check-wm-servalws.sh
 # Or from netmaster: ssh servalws 'bash ~/.dotfiles/scripts/check-wm-servalws.sh'
@@ -14,7 +14,7 @@ echo ""
 
 # --- 1. Running WM processes -----------------------------------------------
 echo "--- 1. Running WM processes ---"
-for proc in awesome picom dunst polybar; do
+for proc in awesome quickshell picom xss-lock; do
   if pgrep -x "$proc" >/dev/null 2>&1; then
     pid=$(pgrep -x "$proc" | head -1)
     echo "  [RUNNING]  $proc (PID: $pid)"
@@ -22,12 +22,11 @@ for proc in awesome picom dunst polybar; do
     echo "  [STOPPED]  $proc"
   fi
 done
-# rofi is on-demand, not persistent — check if installed instead
 echo ""
 
 # --- 2. Installed binaries -------------------------------------------------
 echo "--- 2. Installed binaries ---"
-for bin in awesome picom dunst polybar rofi feh xss-lock i3lock flameshot; do
+for bin in awesome quickshell picom feh xss-lock i3lock flameshot xclip busctl jq; do
   path=$(command -v "$bin" 2>/dev/null || true)
   if [[ -n "$path" ]]; then
     echo "  [INSTALLED]  $bin -> $path"
@@ -47,11 +46,9 @@ for cfg in \
   "$HOME/.config/awesome/signals.lua" \
   "$HOME/.config/awesome/dynamism.lua" \
   "$HOME/.config/picom/picom.conf" \
-  "$HOME/.config/dunst/dunstrc" \
-  "$HOME/.config/polybar/config.ini" \
-  "$HOME/.config/polybar/colors.ini" \
-  "$HOME/.config/polybar/launch.sh" \
-  "$HOME/.config/rofi/config.rasi" \
+  "$HOME/.config/quickshell/shell.qml" \
+  "$HOME/.config/quickshell/services/DbusOwnershipService.qml" \
+  "$HOME/.config/quickshell/awesome-integration/bridge.lua" \
 ; do
   if [[ -L "$cfg" ]]; then
     target=$(readlink -f "$cfg")
@@ -88,42 +85,11 @@ else
 fi
 echo ""
 
-# --- 5. awesome_wm_scripts: referenced vs orphaned -------------------------
-echo "--- 5. awesome_wm_scripts: referenced vs orphaned ---"
-
-# Scripts referenced by awesome rc.lua or keys.lua
-AWESOME_REFS=(
-  x11-session-env.sh
-  x11-monitor-setup.sh
-  rofi-keybinds.sh
-  rofi-display-manager.sh
-  wm-stabilize.sh
-  rofi-power-menu.sh
-  rofi-audio-menu.sh
-  rofi-wifi-menu.sh
-  rofi-bluetooth-menu.sh
-  screenshot-flameshot.sh
-)
-
-# Scripts referenced by polybar config
-POLYBAR_REFS=(
-  rofi-calendar.sh
-  rofi-audio-menu.sh
-  rofi-wifi-menu.sh
-  polybar-bluetooth-status.sh
-  rofi-bluetooth-menu.sh
-  rofi-power-menu.sh
-)
-
-# All known referenced scripts (unique)
-declare -A REFERENCED
-for s in "${AWESOME_REFS[@]}" "${POLYBAR_REFS[@]}"; do
-  REFERENCED["$s"]=1
-done
-
+# --- 5. Current helper package ---------------------------------------------
+echo "--- 5. Current awesome_wm_scripts package ---"
 SCRIPTS_DIR="$HOME/.config/scripts"
 if [[ -d "$SCRIPTS_DIR" ]]; then
-  echo "  Scripts present in ~/.config/scripts/:"
+  echo "  Helpers present in ~/.config/scripts/:"
   for script in "$SCRIPTS_DIR"/*.sh; do
     [[ -f "$script" ]] || continue
     name=$(basename "$script")
@@ -137,77 +103,58 @@ if [[ -d "$SCRIPTS_DIR" ]]; then
     else
       exec_status="NOT executable"
     fi
-    if [[ -n "${REFERENCED[$name]:-}" ]]; then
-      ref_status="REFERENCED"
-    else
-      ref_status="ORPHANED (not referenced by awesome or polybar)"
-    fi
-    echo "    $name: $link_status, $exec_status, $ref_status"
+    echo "    $name: $link_status, $exec_status"
   done
 else
   echo "  [MISSING] ~/.config/scripts/ directory not found"
 fi
 echo ""
 
-# --- 6. Theme system -------------------------------------------------------
-echo "--- 6. Theme system ---"
-THEME_NAME_FILE="$HOME/active_theme.name"
-if [[ -f "$THEME_NAME_FILE" ]]; then
-  if [[ -L "$THEME_NAME_FILE" ]]; then
-    echo "  active_theme.name: [SYMLINK] -> $(readlink -f "$THEME_NAME_FILE")"
-  else
-    echo "  active_theme.name: [REAL FILE]"
-  fi
-  echo "  Active theme: $(cat "$THEME_NAME_FILE")"
+# --- 6. Quickshell ownership and bridge ------------------------------------
+echo "--- 6. Quickshell IPC, ownership, and bridge ---"
+if command -v quickshell >/dev/null 2>&1; then
+  quickshell --path "$HOME/.config/quickshell/shell.qml" ipc call shell status 2>&1 \
+    || echo "  [FAIL] Quickshell shell IPC unavailable"
 else
-  echo "  active_theme.name: [MISSING]"
+  echo "  [MISSING] quickshell"
 fi
-
-for tool in theme-select theme-apply; do
-  path="$HOME/awesomewm-bin/$tool"
-  if [[ -x "$path" ]]; then
-    if [[ -L "$path" ]]; then
-      echo "  $tool: [EXECUTABLE, symlink]"
-    else
-      echo "  $tool: [EXECUTABLE, real file]"
-    fi
-  elif [[ -f "$path" ]]; then
-    echo "  $tool: [NOT EXECUTABLE]"
+if command -v busctl >/dev/null 2>&1; then
+  for name in org.freedesktop.Notifications org.kde.StatusNotifierWatcher; do
+    echo "  -- $name --"
+    busctl --user --no-pager status "$name" 2>&1 | head -n 8 || true
+  done
+fi
+STATE_PATH="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell-awesome/state.json"
+if [[ -r "$STATE_PATH" ]]; then
+  if command -v jq >/dev/null 2>&1; then
+    jq '{producerGeneration,publishedAtMs,primaryOutput,focusedOutput,workspaceIndex,workspaceSynchronized}' "$STATE_PATH" 2>&1 || true
   else
-    echo "  $tool: [MISSING]"
+    echo "  [PRESENT] $STATE_PATH"
+  fi
+else
+  echo "  [MISSING] $STATE_PATH"
+fi
+echo ""
+
+# --- 7. Retired runtime absence --------------------------------------------
+echo "--- 7. Retired runtime absence ---"
+for proc in rofi polybar dunst; do
+  if pgrep -x "$proc" >/dev/null 2>&1; then
+    echo "  [STALE PROCESS] $proc"
+  else
+    echo "  [ABSENT] $proc process"
   fi
 done
-
-# Check theme library
-THEME_LIB="$HOME/.dotfiles/themes/library"
-if [[ -d "$THEME_LIB" ]]; then
-  available=$(ls -1 "$THEME_LIB" 2>/dev/null | tr '\n' ' ')
-  echo "  Available themes: $available"
-else
-  echo "  [MISSING] themes library at $THEME_LIB"
-fi
+for path in "$HOME/.config/rofi" "$HOME/.config/polybar" "$HOME/.config/dunst"; do
+  if [[ -e "$path" || -L "$path" ]]; then
+    echo "  [STALE TARGET] $path"
+  else
+    echo "  [ABSENT] $path"
+  fi
+done
 echo ""
 
-# --- 7. polybar launch script ----------------------------------------------
-echo "--- 7. Polybar launch script ---"
-LAUNCH="$HOME/.config/polybar/launch.sh"
-if [[ -f "$LAUNCH" ]]; then
-  if [[ -x "$LAUNCH" ]]; then
-    echo "  launch.sh: [EXECUTABLE]"
-  else
-    echo "  launch.sh: [NOT EXECUTABLE]"
-  fi
-  if [[ -L "$LAUNCH" ]]; then
-    echo "  launch.sh: [SYMLINK] -> $(readlink -f "$LAUNCH")"
-  else
-    echo "  launch.sh: [REAL FILE]"
-  fi
-else
-  echo "  launch.sh: [MISSING]"
-fi
-echo ""
-
-# --- 8. Bling vendor -------------------------------------------------------
+# --- 8. Bling vendor --------------------------------------------------------
 echo "--- 8. Awesome bling vendor ---"
 BLING="$HOME/.config/awesome/vendor/bling"
 if [[ -d "$BLING" ]]; then

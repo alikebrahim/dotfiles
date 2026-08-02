@@ -1,0 +1,17 @@
+{
+  "primaryOutput": "screen-primary",
+  "focusedOutput": "screen-secondary",
+  "outputs": [
+    {"id": "screen-secondary", "name": "eDP-1-1"},
+    {"id": "screen-primary", "name": "HDMI-0"}
+  ],
+  "tags": [
+    {"name": "1", "selected": true, "occupied": true, "urgent": false},
+    {"name": "2", "selected": false, "occupied": false, "urgent": true}
+  ],
+  "focusedClient": {
+    "title": "Example window",
+    "class": "example",
+    "screen": "screen-secondary"
+  }
+}

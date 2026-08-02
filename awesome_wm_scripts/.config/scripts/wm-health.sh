@@ -3,7 +3,7 @@ set -u
 
 # wm-health.sh - concise AwesomeWM/X11 desktop health report.
 # Built from the older awesome-dump-state diagnostic pattern, expanded for the
-# full AwesomeWM + Polybar + picom + Dunst + keyring stack.
+# current AwesomeWM + Quickshell + picom + keyring stack.
 
 section() {
   printf '\n== %s ==\n' "$1"
@@ -70,13 +70,22 @@ if have awesome-client; then
   awesome-client 'local out=""; for _, c in ipairs(client.get()) do local g=c:geometry(); out=out..(c.class or "nil").." | "..(c.name or "nil").." | screen="..tostring(c.screen.index).." | floating="..tostring(c.floating).." | fullscreen="..tostring(c.fullscreen).." | maximized="..tostring(c.maximized).." | geom="..g.x..","..g.y.." "..g.width.."x"..g.height.."\n" end; return out' 2>&1 || true
 fi
 
-section "Polybar"
-pgrep -a polybar || echo "not running"
-printf '\n%s\n' "-- log: /tmp/polybar-main.log --"
-if [[ -f /tmp/polybar-main.log ]]; then
-  tail -n 40 /tmp/polybar-main.log
+section "Quickshell"
+pgrep -a quickshell || echo "not running"
+printf '\n%s\n' "-- shell status --"
+if have quickshell; then
+  quickshell --path "$HOME/.config/quickshell/shell.qml" ipc call shell status 2>&1 || true
 else
-  echo "missing"
+  echo "quickshell not found"
+fi
+printf '\n%s\n' "-- bridge state --"
+state_path="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell-awesome/state.json"
+if [[ -r "$state_path" ]] && have jq; then
+  jq '{producerGeneration,publishedAtMs,primaryOutput,focusedOutput,workspaceIndex,workspaceSynchronized}' "$state_path" 2>&1 || true
+elif [[ -r "$state_path" ]]; then
+  echo "$state_path present (jq unavailable)"
+else
+  echo "$state_path missing"
 fi
 
 section "picom"
@@ -89,24 +98,14 @@ else
   echo "picom not found"
 fi
 
-section "Dunst / notifications"
-pgrep -a dunst || echo "dunst not running"
-printf '\n%s\n' "-- notification bus owner --"
+section "Quickshell D-Bus ownership"
 if have busctl; then
-  busctl --user list 2>/dev/null | grep -E 'org.freedesktop.Notifications|dunst|awesome' || true
+  for name in org.freedesktop.Notifications org.kde.StatusNotifierWatcher; do
+    printf '%s\n' "-- $name --"
+    busctl --user --no-pager status "$name" 2>&1 | head -n 12 || true
+  done
 else
   echo "busctl not found"
-fi
-if have dunstctl; then
-  printf '\n%s\n' "-- dunst paused --"
-  dunstctl is-paused 2>&1 || true
-fi
-
-section "Rofi"
-if have rofi; then
-  rofi -version 2>&1 || true
-else
-  echo "rofi not found"
 fi
 
 section "Keyring / Polkit"
@@ -124,7 +123,7 @@ pgrep -a polkit || true
 ps -u "$USER" -o pid,comm,args 2>/dev/null | grep -Ei 'polkit|agent|auth' | grep -v grep || true
 
 section "Dependencies"
-for cmd in jq pactl wpctl pamixer nmcli rfkill bluetoothctl brightnessctl flameshot notify-send xclip xrandr awesome awesome-client polybar polybar-msg picom dunst dunstctl rofi busctl systemctl pkexec; do
+for cmd in jq pactl wpctl pamixer nmcli rfkill bluetoothctl brightnessctl flameshot notify-send xclip xrandr awesome awesome-client quickshell picom busctl systemctl pkexec; do
   if have "$cmd"; then
     printf 'ok      %s -> %s\n' "$cmd" "$(command -v "$cmd")"
   else

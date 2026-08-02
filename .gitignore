@@ -11,3 +11,6 @@ ssh/**/.ssh/known_hosts
 *.sync-conflict-*
 
 1Password/
+
+# Python bytecode cache
+__pycache__/

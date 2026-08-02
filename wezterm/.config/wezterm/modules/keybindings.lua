@@ -50,6 +50,8 @@ function M.apply(config)
 	table.insert(keys, { key = "n", mods = "CTRL|SHIFT", action = act.SpawnTab("CurrentPaneDomain") })
 	table.insert(keys, { key = "{", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(-1) })
 	table.insert(keys, { key = "}", mods = "CTRL|SHIFT", action = act.ActivateTabRelative(1) })
+	table.insert(keys, { key = "{", mods = "CTRL|SHIFT|ALT", action = act.MoveTabRelative(-1) })
+	table.insert(keys, { key = "}", mods = "CTRL|SHIFT|ALT", action = act.MoveTabRelative(1) })
 	table.insert(keys, { key = "t", mods = "CTRL|SHIFT", action = act.ShowTabNavigator })
 	table.insert(keys, {
 		key = ",",

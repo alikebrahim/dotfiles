@@ -12,6 +12,7 @@ modules=(
   system:ly-display-manager
   system:ly-screen
   system:mate-polkit-package
+  system:battery-charge-thresholds
   user:gnome-keyring-units
   user:awesome-auth-startup
 )

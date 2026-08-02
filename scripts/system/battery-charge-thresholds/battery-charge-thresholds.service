@@ -1,0 +1,13 @@
+[Unit]
+Description=Set BAT0 charging thresholds to 50-60 percent
+Wants=systemd-modules-load.service
+After=systemd-modules-load.service
+ConditionPathExists=/sys/class/power_supply/BAT0/charge_control_start_threshold
+ConditionPathExists=/sys/class/power_supply/BAT0/charge_control_end_threshold
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sh -ec 'echo 50 > /sys/class/power_supply/BAT0/charge_control_start_threshold; echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold'
+
+[Install]
+WantedBy=multi-user.target

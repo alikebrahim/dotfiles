@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Non-modal screenshot helper for capturing transient UI like Rofi menus.
+# Non-modal screenshot helper for capturing transient Quickshell panels.
 # Unlike Flameshot GUI, this does not open a selection overlay before capture.
 
 mode="${1:-full}"

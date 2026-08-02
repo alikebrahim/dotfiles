@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Compact host-aware status for tmux.
-# Shows CPU temperature, root disk use, optional Pi SSD use, and 1-minute load.
+# Compact host-agnostic status for tmux.
+# Shows CPU temperature, root disk use, any mounted /mnt filesystems, and 1-minute load.
 
 set -u
-
-host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf unknown)"
 
 # Temperature
 if [[ -r /sys/class/thermal/thermal_zone0/temp ]]; then
@@ -20,20 +18,16 @@ if command -v df >/dev/null 2>&1; then
   root_use="$(df -hP / 2>/dev/null | awk 'NR==2 {print $5}')"
 fi
 
-# External SSD usage, Pi only
-ssd_segment=""
-if [[ "$host" == "pi" ]]; then
-  ssd_mount="/mnt/portable_ssd"
-  ssd_use="off"
-
-  if command -v mountpoint >/dev/null 2>&1 && mountpoint -q "$ssd_mount"; then
-    ssd_use="$(df -hP "$ssd_mount" 2>/dev/null | awk 'NR==2 {print $5}')"
-  elif [[ -d "$ssd_mount" ]]; then
-    # Fallback for minimal systems where mountpoint may be unavailable.
-    ssd_use="$(df -hP "$ssd_mount" 2>/dev/null | awk 'NR==2 {print $5}')"
-  fi
-
-  ssd_segment=" ssd $ssd_use"
+# External filesystems mounted under /mnt (auto-detected, host-agnostic).
+# Each shows as "<basename> <use%>". Nothing shown when none are mounted.
+mnt_segment=""
+if command -v findmnt >/dev/null 2>&1; then
+  while IFS= read -r mnt; do
+    [[ -n "$mnt" ]] || continue
+    mnt_use="$(df -hP "$mnt" 2>/dev/null | awk 'NR==2 {print $5}')"
+    [[ -n "$mnt_use" ]] || continue
+    mnt_segment="$mnt_segment $(basename "$mnt") $mnt_use"
+  done < <(findmnt -lno TARGET -t ext4,btrfs,xfs 2>/dev/null | grep '^/mnt/' | sort)
 fi
 
 # Load average
@@ -43,4 +37,4 @@ else
   load="--"
 fi
 
-printf 'temp %s / %s%s load %s' "$temp" "$root_use" "$ssd_segment" "$load"
+printf 'temp %s / %s%s load %s' "$temp" "$root_use" "$mnt_segment" "$load"

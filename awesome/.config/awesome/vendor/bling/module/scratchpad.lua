@@ -1,6 +1,6 @@
 local awful = require("awful")
 local gears = require("gears")
-local naughty = require("naughty")
+local naughty = require("naughty.core")
 local helpers = require(tostring(...):match(".*bling") .. ".helpers")
 local capi = { awesome = awesome, client = client }
 local ruled = capi.awesome.version ~= "v4.3" and require("ruled") or nil

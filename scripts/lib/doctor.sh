@@ -38,8 +38,8 @@ doctor_fold_status() {
 doctor_catalog_audit() {
     local root="${1:-${DOTFILES:-${STOW_ROOT:-${STOW_CATALOG_ROOT:-}}}}"
     local id entry name
-    local missing_on_disk=0 unregistered=0 profile_bad=0
-    local skip_names='scripts docs tests ssh revamp'
+    local missing_on_disk=0 unregistered=0 profile_bad=0 archive_refs=0 archives=0
+    local skip_names='scripts docs tests ssh revamp omarchy quickshell_screenshots'
 
     [[ -n "$root" ]] || {
         printf '%s doctor_catalog_audit needs a repo root\n' "$STATUS_BLOCKED" >&2
@@ -50,6 +50,11 @@ doctor_catalog_audit() {
 
     printf 'CATALOG vs DISK\n'
     for id in "${STOW_CATALOG_IDS[@]}"; do
+        if [[ "$id" == *-archived ]]; then
+            printf '%s archived directory must not be catalogued: %s\n' "$STATUS_DRIFT" "$id"
+            ((archive_refs += 1))
+            continue
+        fi
         if [[ -d "${root}/${id}" ]]; then
             printf '%s catalog package present: %s\n' "$STATUS_CURRENT" "$id"
         else
@@ -65,6 +70,11 @@ doctor_catalog_audit() {
         case " $skip_names " in
             *" $name "*) continue ;;
         esac
+        if [[ "$name" == *-archived ]]; then
+            printf '%s archive directory (not a Stow package): %s\n' "$STATUS_CURRENT" "$name"
+            ((archives += 1))
+            continue
+        fi
         if stow_catalog_has "$name"; then
             continue
         fi
@@ -80,6 +90,12 @@ doctor_catalog_audit() {
         printf '%s profile lists no Stow packages\n' "$STATUS_CURRENT"
     else
         for id in "${PROFILE_STOW_PACKAGES[@]}"; do
+            if [[ "$id" == *-archived ]]; then
+                printf '%s profile must not select archive directory: %s\n' \
+                    "$STATUS_DRIFT" "$id"
+                ((profile_bad += 1))
+                continue
+            fi
             if stow_catalog_has "$id"; then
                 printf '%s profile package registered: %s\n' "$STATUS_CURRENT" "$id"
             else
@@ -91,9 +107,9 @@ doctor_catalog_audit() {
     fi
 
     printf '\nSUMMARY\n'
-    printf 'missing_on_disk=%d unregistered=%d profile_mismatches=%d\n' \
-        "$missing_on_disk" "$unregistered" "$profile_bad"
-    if (( missing_on_disk + unregistered + profile_bad > 0 )); then
+    printf 'missing_on_disk=%d unregistered=%d profile_mismatches=%d archive_refs=%d archives=%d\n' \
+        "$missing_on_disk" "$unregistered" "$profile_bad" "$archive_refs" "$archives"
+    if (( missing_on_disk + unregistered + profile_bad + archive_refs > 0 )); then
         return "$EXIT_DRIFT"
     fi
     return "$EXIT_OK"

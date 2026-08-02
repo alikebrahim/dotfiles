@@ -41,6 +41,5 @@ if [[ -o login ]] && [[ -o interactive ]] && [[ -z "$TMUX" ]] && [[ -n "$SSH_TTY
   exec tmux attach-session -t "$DEVICE_SESSION"
 fi
 
-
 # Added by Antigravity CLI installer
 export PATH="/home/alikebrahim/.local/bin:$PATH"

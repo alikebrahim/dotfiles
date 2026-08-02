@@ -8,7 +8,6 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-
 # Set the directory we want to store zinit and plugins
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 
@@ -74,7 +73,6 @@ export FZF_DEFAULT_OPTS='
 ## # zig
 # export PATH="$HOME/.local/bin/zig-linux-x86_64-0.13.0/:$PATH"
 
-
 # Load completions
 ## This should precede plugins to avoid sytax-highlighting
 ## from overriding fzf-tab
@@ -114,7 +112,6 @@ bindkey '^p' history-search-backward
 bindkey '^n' history-search-forward
 bindkey '^[w' kill-region
 
-
 # HISTORY
 # -------
 HISTSIZE=5000
@@ -140,7 +137,6 @@ zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'eza -1 --color=always $real
 zstyle ':completion:*:git-checkout:*' sort false # disable sort when completing `git checkout`
 zstyle ':completion:*:descriptions' format '[%d]' # set descriptions format to enable group support
 zstyle ':fzf-tab:*' fzf-flags --bind ctrl-y:accept # ctrl+y for accepting fzf-tab selection
-
 
 # ALIASES
 # -------
@@ -174,7 +170,6 @@ alias lnvim='NVIM_APPNAME="nvim-lazy" nvim'
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 (( ${+commands[direnv]} )) && emulate zsh -c "$(direnv hook zsh)"
-
 
 # FUNCTIONS
 # ---------
@@ -296,7 +291,6 @@ export PATH=/home/alikebrahim/.bcode/bin:$PATH
 
 # opencode
 export PATH=/home/alikebrahim/.opencode/bin:$PATH
-
 
 # Added by Antigravity CLI installer
 export PATH="/home/alikebrahim/.local/bin:$PATH"

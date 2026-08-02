@@ -11,12 +11,15 @@ trap 'rm -rf "$TMPDIR"' EXIT
 REPO="$TMPDIR/repo"
 HOME_DIR="$TMPDIR/home"
 BIN="$TMPDIR/bin"
-mkdir -p "$REPO/pkg/.config/app" "$REPO/pkg/.local/share/ignored" "$HOME_DIR/.config/app" "$BIN"
+mkdir -p "$REPO/pkg/.config/app" "$REPO/pkg/.local/share/ignored" \
+    "$REPO/pkg/docs/nested" "$HOME_DIR/.config/app" "$BIN"
 printf 'one\n' > "$REPO/pkg/.config/app/one"
 printf 'two\n' > "$REPO/pkg/.config/app/two"
 printf 'skip\n' > "$REPO/pkg/.local/share/ignored/secret"
+printf 'documentation\n' > "$REPO/pkg/docs/nested/reference.md"
 cat > "$REPO/pkg/.stow-local-ignore" <<'EOF'
 .local/share
+^/docs(/|$)
 EOF
 ln -s "$REPO/pkg/.config/app/one" "$HOME_DIR/.config/app/one"
 
@@ -28,11 +31,32 @@ set -e
 assert_eq "partially linked package reports drift" "$EXIT_DRIFT" "$partial_rc"
 assert_text_contains "partial status explains linked count" "1/2" "$partial"
 assert_text_not_contains "ignored files are excluded from managed totals" "1/3" "$partial"
+managed="$(stow_package_managed_files pkg)"
+assert_text_not_contains "anchored ignored directory is excluded" "docs/nested/reference.md" "$managed"
 
 ln -s "$REPO/pkg/.config/app/two" "$HOME_DIR/.config/app/two"
 current="$(stow_package_status pkg)"
 assert_text_contains "fully linked package reports current" "$STATUS_CURRENT" "$current"
 assert_text_contains "full status reports all managed targets" "2/2" "$current"
+
+# A source move/removal must make package-owned dangling links visible as drift
+# so desired-state apply actually restows and removes them.
+mv "$REPO/pkg/.config/app/one" "$REPO/pkg/.config/app/one-retired"
+set +e
+orphaned="$(stow_package_status pkg)"
+orphaned_rc=$?
+set -e
+assert_eq "package-owned dangling link reports drift" "$EXIT_DRIFT" "$orphaned_rc"
+assert_text_contains "orphan status reports the removed source link" "1 orphaned links" "$orphaned"
+orphan_cleanup="$(stow_remove_orphaned_links pkg)"
+assert_text_contains "orphan cleanup reports the exact removed link" ".config/app/one" "$orphan_cleanup"
+if [[ ! -L "$HOME_DIR/.config/app/one" ]]; then
+    pass "orphan cleanup removes only the dangling package link"
+else
+    fail "orphan cleanup removes only the dangling package link"
+fi
+mv "$REPO/pkg/.config/app/one-retired" "$REPO/pkg/.config/app/one"
+ln -s "$REPO/pkg/.config/app/one" "$HOME_DIR/.config/app/one"
 
 # Real file conflict inventory
 rm -f "$HOME_DIR/.config/app/two"

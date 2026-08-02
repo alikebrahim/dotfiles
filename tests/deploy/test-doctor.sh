@@ -27,6 +27,11 @@ set -e
 assert_eq "catalog audit succeeds for this repo" "0" "$audit_rc"
 assert_text_contains "catalog audit confirms zsh" "catalog package present: zsh" "$audit"
 assert_text_contains "catalog audit accepts profile package" "profile package registered: zsh" "$audit"
+assert_text_contains "catalog audit recognizes Rofi archive" "archive directory (not a Stow package): rofi-archived" "$audit"
+assert_text_contains "catalog audit recognizes Polybar archive" "archive directory (not a Stow package): polybar-archived" "$audit"
+assert_text_contains "catalog audit recognizes Dunst archive" "archive directory (not a Stow package): dunst-archived" "$audit"
+assert_text_contains "catalog audit recognizes mixed-helper archive" "archive directory (not a Stow package): awesome_wm_scripts-archived" "$audit"
+assert_text_contains "catalog audit recognizes Pillbar archive" "archive directory (not a Stow package): awesome-pillbar-archived" "$audit"
 
 plugins="$(doctor_tmux_plugins_status)"
 assert_text_contains "tmux plugin status notes apply exclusion" "not applied by configure-host apply" "$plugins"

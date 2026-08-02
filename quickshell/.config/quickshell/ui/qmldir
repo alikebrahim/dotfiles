@@ -1,0 +1,11 @@
+module ui
+X11Panel 1.0 X11Panel.qml
+PopupCard 1.0 PopupCard.qml
+PopupToolTip 1.0 PopupToolTip.qml
+KeyboardNavigator 1.0 KeyboardNavigator.qml
+OmarchyButton 1.0 OmarchyButton.qml
+PanelHero 1.0 PanelHero.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+PanelSlider 1.0 PanelSlider.qml
+PanelTextField 1.0 PanelTextField.qml
