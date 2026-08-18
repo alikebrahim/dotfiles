@@ -7,6 +7,7 @@ PanelWindow {
 
   property var notificationService: null
   property var targetScreen: null
+  property bool suppressed: false
   property int admissionDelayMs: 60
   property int finalUnmapDelayMs: ShellStyle.Metrics.animationMs
   property bool presentationVisible: false
@@ -16,7 +17,7 @@ PanelWindow {
     && targetScreen !== null
 
   screen: targetScreen
-  visible: hostReady && presentationVisible
+  visible: hostReady && !suppressed && presentationVisible
   implicitWidth: ShellStyle.Metrics.notificationToastWidth
   implicitHeight: Math.max(1, reservedHeight)
   color: ShellStyle.Palette.transparent
@@ -32,7 +33,7 @@ PanelWindow {
   mask: Region { item: toastColumn }
 
   function hasPresentablePopups() {
-    return hostReady && notificationService.popupCount > 0
+    return hostReady && !suppressed && notificationService.popupCount > 0
   }
 
   function currentToastHeight() {
@@ -46,7 +47,7 @@ PanelWindow {
   }
 
   function synchronizePresentation() {
-    if (!hostReady) {
+    if (!hostReady || suppressed) {
       admissionTimer.stop()
       finalUnmapTimer.stop()
       presentationVisible = false
@@ -72,6 +73,7 @@ PanelWindow {
 
   onNotificationServiceChanged: synchronizePresentation()
   onTargetScreenChanged: synchronizePresentation()
+  onSuppressedChanged: synchronizePresentation()
   Component.onCompleted: synchronizePresentation()
 
   Connections {

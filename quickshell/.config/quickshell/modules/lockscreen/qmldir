@@ -1,0 +1,12 @@
+module modules.lockscreen
+singleton InstrumentPalette 1.0 InstrumentPalette.qml
+InstrumentFrame 1.0 InstrumentFrame.qml
+CapacityRail 1.0 CapacityRail.qml
+PressureCell 1.0 PressureCell.qml
+FanInstrument 1.0 FanInstrument.qml
+TraceCanvas 1.0 TraceCanvas.qml
+SynopticBackdrop 1.0 SynopticBackdrop.qml
+MachineSynopticPrimaryView 1.0 MachineSynopticPrimaryView.qml
+MachineSynopticAuxView 1.0 MachineSynopticAuxView.qml
+MachineSynoptic 1.0 MachineSynoptic.qml
+MachineSynopticSurface 1.0 MachineSynopticSurface.qml

@@ -32,8 +32,8 @@
 [diff]
     colorMoved = default
 
-# 1Password SSH signing — only present on hosts with 1Password installed
-# (servalws, minisforoum). Stowed via the 1Password package. Git silently
-# ignores the include if the file does not exist.
+# SSH commit signing — file-based ed25519 key (~/.ssh/primary_key), no agent.
+# Present on hosts with the 1Password package (servalws, minisforoum), stowed
+# via that package. Git silently ignores the include if the file does not exist.
 [include]
     path = ~/.config/git/1password-signing.gitconfig

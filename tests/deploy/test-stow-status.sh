@@ -11,14 +11,14 @@ trap 'rm -rf "$TMPDIR"' EXIT
 REPO="$TMPDIR/repo"
 HOME_DIR="$TMPDIR/home"
 BIN="$TMPDIR/bin"
-mkdir -p "$REPO/pkg/.config/app" "$REPO/pkg/.local/share/ignored" \
+mkdir -p "$REPO/pkg/.config/app" "$REPO/pkg/.cache/ignored" \
     "$REPO/pkg/docs/nested" "$HOME_DIR/.config/app" "$BIN"
 printf 'one\n' > "$REPO/pkg/.config/app/one"
 printf 'two\n' > "$REPO/pkg/.config/app/two"
-printf 'skip\n' > "$REPO/pkg/.local/share/ignored/secret"
+printf 'skip\n' > "$REPO/pkg/.cache/ignored/secret"
 printf 'documentation\n' > "$REPO/pkg/docs/nested/reference.md"
 cat > "$REPO/pkg/.stow-local-ignore" <<'EOF'
-.local/share
+.cache/ignored
 ^/docs(/|$)
 EOF
 ln -s "$REPO/pkg/.config/app/one" "$HOME_DIR/.config/app/one"
@@ -81,5 +81,30 @@ assert_text_not_contains "default simulation hides UNLINK chatter" "UNLINK:" "$q
 STOW_VERBOSE=true
 verbose_plan="$(stow_simulate_package pkg 2>&1)"
 assert_text_contains "verbose simulation exposes detail" "LINK: noisy" "$verbose_plan"
+
+# A deep .local/share package path must not make orphan detection walk the
+# entire shared data root, which may contain large unrelated container storage.
+mkdir -p "$REPO/pkg/.local/share/icons" "$HOME_DIR/.local/share/icons"
+printf 'keep\n' > "$REPO/pkg/.local/share/icons/keep.png"
+printf 'retire\n' > "$REPO/pkg/.local/share/icons/retire.png"
+ln -s "$REPO/pkg/.local/share/icons/keep.png" "$HOME_DIR/.local/share/icons/keep.png"
+ln -s "$REPO/pkg/.local/share/icons/retire.png" "$HOME_DIR/.local/share/icons/retire.png"
+mv "$REPO/pkg/.local/share/icons/retire.png" "$TMPDIR/retire.png"
+
+SYSTEM_FIND="$(command -v find)"
+export FORBIDDEN_FIND_ROOT="$HOME_DIR/.local/share"
+export SYSTEM_FIND
+cat > "$BIN/find" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "$FORBIDDEN_FIND_ROOT" ]]; then
+    printf 'unexpected broad scan: %s\n' "$1" >&2
+    exit 96
+fi
+exec "$SYSTEM_FIND" "$@"
+MOCK
+chmod +x "$BIN/find"
+
+deep_orphans="$(stow_package_orphaned_links pkg)"
+assert_text_contains "deep orphan scan finds the retired icon" ".local/share/icons/retire.png" "$deep_orphans"
 
 finish_tests

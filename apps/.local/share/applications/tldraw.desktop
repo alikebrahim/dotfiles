@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=tldraw
+Exec=tldraw
+Terminal=false
+Type=Application
+Icon=tldraw
+Comment=Whiteboard & diagramming
+Categories=Graphics;

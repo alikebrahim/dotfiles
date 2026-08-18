@@ -18,3 +18,6 @@ WeatherService 1.0 WeatherService.qml
 PowerService 1.0 PowerService.qml
 BrightnessService 1.0 BrightnessService.qml
 DisplayService 1.0 DisplayService.qml
+TelemetryService 1.0 TelemetryService.qml
+TelemetryCollector 1.0 TelemetryCollector.qml
+TelemetryInterpolation 1.0 TelemetryInterpolation.qml

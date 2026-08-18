@@ -1,0 +1,5 @@
+#!/bin/sh
+# mmpv - mpv with split-marker.lua loaded (m=mark, u=undo, p=list)
+# Run from the video's folder: markers are written next to the video.
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)
+exec mpv --script="$SELF_DIR/split-marker.lua" "$@"

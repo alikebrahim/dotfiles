@@ -1,0 +1,213 @@
+#!/bin/sh
+# netgit — thin wrapper for git operations against git@netmaster
+# Distributed via dotfiles (Stow + Syncthing). Available on all machines.
+# Requires: git, ssh access to git@netmaster (key-based sshd auth)
+#
+# Usage:
+#   netgit create <name>        Create bare repo on server only (no clone)
+#   netgit init <name>          Create bare repo on server + clone locally
+#   netgit clone <name> [dest]  Clone existing repo from server
+#   netgit add <name> [remote]  Add netmaster remote by repo name
+#   netgit push [remote] [ref]  Push to netmaster remote
+#   netgit pull [remote] [ref]  Pull from netmaster remote
+#   netgit fetch [remote]       Fetch from netmaster remote
+#   netgit list                 List all repos on server
+#   netgit remote [remote]      Show netmaster remote URL
+#   netgit status               Show remote sync status (ahead/behind)
+#   netgit help                 Show this help
+
+set -eu
+
+REMOTE_DEFAULT="net-origin"
+GIT_HOST="git@netmaster"
+
+usage() {
+    cat << 'EOF'
+netgit — thin wrapper for git operations against git@netmaster
+
+Usage:
+  netgit create <name>        Create bare repo on server only (no clone)
+  netgit init <name>          Create bare repo on server + clone locally
+  netgit clone <name> [dest]  Clone existing repo from server
+  netgit add <name> [remote]  Add netmaster remote by repo name
+  netgit push [remote] [ref]  Push to netmaster remote
+  netgit pull [remote] [ref]  Pull from netmaster remote
+  netgit fetch [remote]       Fetch from netmaster remote
+  netgit list                 List all repos on server
+  netgit remote [remote]      Show netmaster remote URL
+  netgit status               Show remote sync status (ahead/behind)
+  netgit help                 Show this help
+EOF
+    exit "${1:-0}"
+}
+
+# Derive repo name from current directory basename (strip .git suffix)
+dir_repo_name() {
+    base=$(basename "$(pwd)")
+    echo "${base%.git}"
+}
+
+# Resolve remote name: arg or default
+resolve_remote() {
+    echo "${1:-$REMOTE_DEFAULT}"
+}
+
+# Create the bare repo on the server. Used by both init and create.
+create_on_server() {
+    repo_name="$1"
+    echo "Creating bare repo '${repo_name}' on netmaster..."
+    # git-shell-commands/init-repo handles .git suffix and dedup
+    if ! ssh "$GIT_HOST" init-repo "$repo_name"; then
+        echo "Failed to create repo on server" >&2
+        exit 1
+    fi
+}
+
+cmd_init() {
+    [ $# -ge 1 ] || { echo "Usage: netgit init <name>" >&2; exit 1; }
+    repo_name="$1"
+
+    create_on_server "$repo_name"
+
+    echo "Cloning locally..."
+    git clone "${GIT_HOST}:${repo_name}.git"
+}
+
+cmd_create() {
+    [ $# -ge 1 ] || { echo "Usage: netgit create <name>" >&2; exit 1; }
+    repo_name="$1"
+
+    create_on_server "$repo_name"
+
+    echo "Created ${GIT_HOST}:${repo_name}.git"
+    echo "Next: run 'netgit add ${repo_name}' inside an existing local repo to register this remote."
+}
+
+cmd_clone() {
+    [ $# -ge 1 ] || { echo "Usage: netgit clone <name> [destination]" >&2; exit 1; }
+    repo_name="$1"
+    dest="${2:-}"
+
+    if [ -n "$dest" ]; then
+        git clone "${GIT_HOST}:${repo_name}.git" "$dest"
+    else
+        git clone "${GIT_HOST}:${repo_name}.git"
+    fi
+}
+
+cmd_add() {
+    remote_name="$REMOTE_DEFAULT"
+
+    # Repo name is the primary argument; remote name is optional.
+    if [ $# -eq 0 ]; then
+        repo_name=$(dir_repo_name)
+        echo "Using repo name from directory: ${repo_name}" >&2
+    else
+        repo_name="$1"
+        [ $# -ge 2 ] && remote_name="$2"
+    fi
+
+    # Check if remote already exists
+    if git remote get-url "$remote_name" >/dev/null 2>&1; then
+        echo "Remote '${remote_name}' already exists: $(git remote get-url "$remote_name")" >&2
+        exit 1
+    fi
+
+    git remote add "$remote_name" "${GIT_HOST}:${repo_name}.git"
+    echo "Added remote '${remote_name}' -> ${GIT_HOST}:${repo_name}.git"
+}
+
+cmd_push() {
+    remote_name=$(resolve_remote "${1:-}")
+    # Default refspec: current branch
+    if [ $# -ge 2 ]; then
+        refspec="$2"
+    else
+        refspec=$(git symbolic-ref --short HEAD 2>/dev/null || echo "HEAD")
+    fi
+
+    git push "$remote_name" "$refspec"
+}
+
+cmd_pull() {
+    remote_name=$(resolve_remote "${1:-}")
+    if [ $# -ge 2 ]; then
+        refspec="$2"
+    else
+        refspec=$(git symbolic-ref --short HEAD 2>/dev/null || echo "HEAD")
+    fi
+
+    git pull "$remote_name" "$refspec"
+}
+
+cmd_fetch() {
+    remote_name=$(resolve_remote "${1:-}")
+    git fetch "$remote_name"
+}
+
+cmd_list() {
+    # List repos via git-shell-commands/list-repos on the server
+    # Falls back to hostmaster if list-repos isn't installed
+    echo "Repos on netmaster:"
+    ssh "$GIT_HOST" list-repos 2>/dev/null || \
+        ssh hostmaster@netmaster "ls -1 /mnt/storage/git/ | grep '.git\$'" 2>/dev/null || \
+        { echo "Unable to list repos (need list-repos git-shell command or hostmaster access)" >&2; exit 1; }
+}
+
+cmd_remote() {
+    remote_name=$(resolve_remote "${1:-}")
+    if git remote get-url "$remote_name" >/dev/null 2>&1; then
+        git remote get-url "$remote_name"
+    else
+        echo "No remote '${remote_name}' in this repo" >&2
+        exit 1
+    fi
+}
+
+cmd_status() {
+    remote_name=$(resolve_remote "${1:-}")
+
+    if ! git remote get-url "$remote_name" >/dev/null 2>&1; then
+        echo "No remote '${remote_name}' in this repo" >&2
+        exit 1
+    fi
+
+    # Fetch first to get accurate status
+    git fetch "$remote_name" >/dev/null 2>&1 || true
+
+    branch=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+    if [ -z "$branch" ]; then
+        echo "Not on a branch (detached HEAD)" >&2
+        exit 1
+    fi
+
+    ahead=$(git rev-list --count "${remote_name}/${branch}..HEAD" 2>/dev/null || echo "?")
+    behind=$(git rev-list --count "HEAD..${remote_name}/${branch}" 2>/dev/null || echo "?")
+
+    echo "Remote:  ${remote_name} -> $(git remote get-url "$remote_name")"
+    echo "Branch:  ${branch}"
+    echo "Ahead:   ${ahead}"
+    echo "Behind:  ${behind}"
+}
+
+# --- Main dispatch ---
+
+[ $# -eq 0 ] && usage 1
+
+subcommand="$1"
+shift
+
+case "$subcommand" in
+    init)   cmd_init "$@" ;;
+    clone)  cmd_clone "$@" ;;
+    create) cmd_create "$@" ;;
+    add)    cmd_add "$@" ;;
+    push)   cmd_push "$@" ;;
+    pull)   cmd_pull "$@" ;;
+    fetch)  cmd_fetch "$@" ;;
+    list)   cmd_list ;;
+    remote) cmd_remote "$@" ;;
+    status) cmd_status "$@" ;;
+    help|-h|--help) usage 0 ;;
+    *) echo "Unknown command: $subcommand" >&2; usage 1 ;;
+esac

@@ -146,24 +146,42 @@ stow_package_managed_files() {
     done < <(find "$source_dir" \( -type f -o -type l \) -print0 2>/dev/null)
 }
 
+# Return the narrowest shared target directory for orphan scanning. Limit the
+# scan to three directory components, which covers paths such as
+# .local/share/icons without traversing unrelated shared data under
+# ~/.local/share (for example container storage).
+_stow_orphan_scan_root() {
+    local rel="$1" directory part root="" components=0
+
+    directory="${rel%/*}"
+    [[ "$directory" != "$rel" && -n "$directory" ]] || return 1
+    while [[ -n "$directory" && $components -lt 3 ]]; do
+        part="${directory%%/*}"
+        if [[ "$part" == "$directory" ]]; then
+            directory=""
+        else
+            directory="${directory#*/}"
+        fi
+        root+="${root:+/}${part}"
+        (( components += 1 ))
+    done
+    printf '%s\n' "$root"
+}
+
 # Print target-relative symlinks that still point into a selected package but no
-# longer have a source path. Limit scans to the package's two-component target
-# roots (for example .config/awesome or .local/bin), never the whole home tree.
+# longer have a source path. Never scan the whole home tree or shared roots such
+# as ~/.local/share.
 stow_package_orphaned_links() {
     local package="$1"
-    local source_dir rel first remainder second prefix target_root target link_value resolved
+    local source_dir rel scan_root target_root target link_value resolved
     local -A target_roots=()
 
     source_dir="${STOW_ROOT}/${package}"
     stow_package_exists "$package" || return "$EXIT_DRIFT"
 
     while IFS= read -r rel; do
-        [[ "$rel" == */* ]] || continue
-        first="${rel%%/*}"
-        remainder="${rel#*/}"
-        second="${remainder%%/*}"
-        [[ -n "$first" && -n "$second" ]] || continue
-        target_roots["${first}/${second}"]=1
+        scan_root="$(_stow_orphan_scan_root "$rel")" || continue
+        target_roots["$scan_root"]=1
     done < <(stow_package_managed_files "$package")
 
     for prefix in "${!target_roots[@]}"; do

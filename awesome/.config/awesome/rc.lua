@@ -66,6 +66,83 @@ local function report_awesome_error(title, text)
     }
 end
 
+local function process_argv(pid)
+    if type(pid) ~= "number" or pid <= 0 then return nil end
+    local cmdline = io.open("/proc/" .. tostring(pid) .. "/cmdline", "rb")
+    if not cmdline then return nil end
+    local data = cmdline:read("*a")
+    cmdline:close()
+    if not data or data == "" then return nil end
+
+    local argv = {}
+    local cursor = 1
+    while cursor <= #data do
+        local terminator = data:find("\0", cursor, true)
+        if not terminator then break end
+        table.insert(argv, data:sub(cursor, terminator - 1))
+        cursor = terminator + 1
+    end
+    return argv
+end
+
+local function argv_matches(actual, expected)
+    if not actual or #actual ~= #expected then return false end
+    for index, expected_arg in ipairs(expected) do
+        local actual_arg = actual[index]
+        if index == 1 then
+            actual_arg = actual_arg:match("([^/]+)$") or actual_arg
+            expected_arg = expected_arg:match("([^/]+)$") or expected_arg
+        end
+        if actual_arg ~= expected_arg then return false end
+    end
+    return true
+end
+
+local function ensure_lock_route(command)
+    local user = os.getenv("USER")
+    local any_probe = { "/usr/bin/pgrep", "-u", user, "-x", "xss-lock" }
+
+    awful.spawn.easy_async(any_probe, function(stdout)
+        local process_count = 0
+        local intended_count = 0
+        for raw_pid in stdout:gmatch("%d+") do
+            local pid = tonumber(raw_pid)
+            local actual = process_argv(pid)
+            if actual then
+                process_count = process_count + 1
+                if argv_matches(actual, command) then
+                    intended_count = intended_count + 1
+                end
+            end
+        end
+
+        if process_count == 1 and intended_count == 1 then return end
+        if process_count > 0 then
+            report_awesome_error(
+                "Lock route mismatch",
+                "The running xss-lock process set does not exactly match the configured Machine Synoptic route."
+            )
+            return
+        end
+
+        local pid = awful.spawn(command, false)
+        if type(pid) ~= "number" or pid <= 0 then
+            report_awesome_error("Lock route failed to start", tostring(pid))
+            return
+        end
+
+        gears.timer.start_new(1, function()
+            if not argv_matches(process_argv(pid), command) then
+                report_awesome_error(
+                    "Lock route failed to stay running",
+                    "The exact Machine Synoptic xss-lock PID/argv was not present after startup."
+                )
+            end
+            return false
+        end)
+    end)
+end
+
 if awesome.startup_errors then
 	report_awesome_error("Awesome startup errors", awesome.startup_errors)
 end
@@ -100,7 +177,12 @@ end
 
 spawn_shell("feh --bg-center /home/alikebrahim/Pictures/background.png /home/alikebrahim/Pictures/background.png")
 run_once_process("^picom( |$)", { "picom", "--config", "/home/alikebrahim/.config/picom/picom.conf" })
-run_once_process("^xss-lock( |$)", { "xss-lock", "--transfer-sleep-lock", "--", "i3lock", "-c", "1e1e2e" })
+local lock_selector = 'if [ -x "$HOME/.config/scripts/machine-synoptic-lock.sh" ]; then '
+    .. 'exec "$HOME/.config/scripts/machine-synoptic-lock.sh"; '
+    .. 'else exec i3lock --nofork -c 1e1e2e; fi'
+ensure_lock_route(
+    { "xss-lock", "--transfer-sleep-lock", "--", "/bin/sh", "-c", lock_selector }
+)
 run_once_process("^/usr/libexec/polkit-mate-authentication-agent-1$",
     { "/usr/libexec/polkit-mate-authentication-agent-1" })
 run_once_process("^/opt/1Password/1password( --silent)?$",

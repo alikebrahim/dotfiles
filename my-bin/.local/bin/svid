@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""svid - split a video at markers set with mpv + split-marker.lua (mmpv).
+
+Usage:
+    svid <video.mp4> [--dry-run] [--fast] [--encoder nvenc|x265] [--force]
+    svid                      # same, but only if exactly one *.mp4 in the pwd
+
+Workflow: mmpv <video.mp4> in the video's folder, press m at each split
+moment, quit, then run svid <video.mp4>. Markers live in the sidecar
+<video>.markers (one float seconds per line, human-editable).
+
+Modes:
+    default   frame-accurate re-encode (hevc_nvenc, or libx265 with --encoder x265)
+    --fast    copy-mode cut, snaps to keyframes (up to ~10s off on this footage)
+    --dry-run show the segment plan only, create nothing
+
+Output: <video-stem>_parts/ next to the source, plus manifest.csv.
+The source file is never modified. Never overwrites without --force.
+"""
+import argparse
+import csv
+import subprocess
+import sys
+from pathlib import Path
+
+
+def sh(cmd):
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def probe_duration(video: Path) -> float:
+    r = sh(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "csv=p=0", str(video)])
+    if r.returncode != 0:
+        sys.exit("ffprobe failed: " + r.stderr[-2000:])
+    return float(r.stdout.strip())
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("video", nargs="?", help="video file (default: the only *.mp4 in the pwd)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="show the segment plan only")
+    ap.add_argument("--fast", action="store_true",
+                    help="copy-mode cut (keyframe-snapped, no re-encode)")
+    ap.add_argument("--encoder", choices=["nvenc", "x265"], default="nvenc",
+                    help="re-encode encoder (default: nvenc)")
+    ap.add_argument("--force", action="store_true",
+                    help="allow overwriting existing output files")
+    args = ap.parse_args()
+
+    if args.video:
+        video = Path(args.video)
+    else:
+        mp4s = sorted(Path(".").glob("*.mp4"))
+        if len(mp4s) == 0:
+            sys.exit("no video given and no *.mp4 in the current directory")
+        if len(mp4s) > 1:
+            sys.exit("no video given and multiple *.mp4 in the current "
+                     "directory:\n  " + "\n  ".join(p.name for p in mp4s))
+        video = mp4s[0]
+
+    video = video.resolve()
+    if not video.is_file():
+        sys.exit(f"video not found: {video}")
+    markers_path = Path(str(video) + ".markers")
+    if not markers_path.is_file():
+        sys.exit(f"no marker file {markers_path}\n"
+                 "play the video with mmpv and press m at each split moment, then quit")
+
+    # --- 1. read + validate markers -------------------------------------
+    raw = []
+    for line in markers_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            raw.append(float(line))
+        except ValueError:
+            print(f"warning: ignoring non-numeric marker line: {line!r}")
+    if not raw:
+        sys.exit("marker file is empty - no splits to make")
+
+    duration = probe_duration(video)
+
+    markers = sorted(set(round(t, 3) for t in raw))
+    clean, last = [], None
+    for t in markers:
+        if last is not None and t - last < 0.4:
+            print(f"warning: dropping duplicate marker {t:.3f} "
+                  f"(within 0.4s of {last:.3f})")
+            continue
+        clean.append(t)
+        last = t
+    markers = clean
+
+    keep = []
+    for t in markers:
+        if t < 2.0:
+            print(f"warning: dropping marker {t:.3f} (<2s from start)")
+        elif t > duration - 2.0:
+            print(f"warning: dropping marker {t:.3f} "
+                  f"(within 2s of end {duration:.1f})")
+        else:
+            keep.append(t)
+    markers = keep
+    if not markers:
+        sys.exit("no usable markers after validation")
+
+    # --- 2. build segments: [0,m1) [m1,m2) ... [mn,end) ------------------
+    segs, prev = [], 0.0
+    for i, t in enumerate(markers):
+        if i > 0 and t - prev < 3.0:
+            print(f"warning: markers {prev:.3f} and {t:.3f} are only "
+                  f"{t - prev:.2f}s apart - verify these")
+        segs.append((prev, t))
+        prev = t
+    segs.append((prev, duration))
+
+    stem = video.stem
+    parts = [(f"{stem}_p{i:02d}_{a:07.1f}-{b:07.1f}.mp4", a, b, b - a)
+             for i, (a, b) in enumerate(segs, 1)]
+
+    print(f"\n{stem}: {len(segs)} segment(s) from a {duration / 60:.1f} min source\n")
+    print(f"{'part':<46} {'start':>10} {'end':>10} {'dur':>8}")
+    for name, a, b, d in parts:
+        print(f"{name:<46} {a:>10.3f} {b:>10.3f} {d:>8.3f}")
+
+    if args.dry_run:
+        print("\n[dry-run] nothing was created. Remove --dry-run to split.")
+        return
+
+    outdir = video.parent / f"{stem}_parts"
+    if outdir.exists() and any(outdir.iterdir()) and not args.force:
+        sys.exit(f"{outdir} already exists - rerun with --force to overwrite")
+    outdir.mkdir(exist_ok=True)
+
+    if args.fast:
+        venc, encname = ["-c", "copy", "-avoid_negative_ts", "make_zero"], "copy"
+    elif args.encoder == "x265":
+        venc = ["-c:v", "libx265", "-crf", "19", "-preset", "medium", "-tag:v", "hvc1"]
+        encname = "libx265 crf19 medium"
+    else:
+        venc = ["-c:v", "hevc_nvenc", "-preset", "p5", "-cq", "20", "-tag:v", "hvc1"]
+        encname = "hevc_nvenc cq20 p5"
+
+    # --- 3. split ---------------------------------------------------------
+    manifest = [["part", "start", "end", "duration", "size_bytes", "encoder"]]
+    for name, a, b, d in parts:
+        out = outdir / name
+        print(f"\n[{name}] {a:.3f} -> {b:.3f} ({d:.3f}s)  [{encname}]")
+        if out.exists() and not args.force:
+            print("  exists, skipping (use --force to redo)")
+            size = out.stat().st_size
+        else:
+            cmd = (["ffmpeg", "-hide_banner", "-loglevel", "error",
+                    "-y" if args.force else "-n",
+                    "-ss", f"{a:.3f}", "-i", str(video),
+                    "-map", "0", "-t", f"{d:.3f}"] + venc + [str(out)])
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                print("  FAILED - stopping. Finished parts are kept.",
+                      file=sys.stderr)
+                sys.stderr.write(r.stderr[-3000:])
+                print("\nhint: if nvenc failed, rerun with --encoder x265",
+                      file=sys.stderr)
+                sys.exit(1)
+            size = out.stat().st_size
+        manifest.append([name, f"{a:.3f}", f"{b:.3f}", f"{d:.3f}",
+                         str(size), encname])
+
+    mf = outdir / "manifest.csv"
+    with mf.open("w", newline="") as fh:
+        csv.writer(fh).writerows(manifest)
+    print(f"\nmanifest: {mf}")
+    print("done.")
+
+
+if __name__ == "__main__":
+    main()

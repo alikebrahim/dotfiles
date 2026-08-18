@@ -11,6 +11,7 @@ import "modules/calendar" as Calendar
 import "modules/keybinds" as Keybinds
 import "modules/display" as Display
 import "modules/notifications" as Notifications
+import "modules/lockscreen" as Lockscreen
 
 ShellRoot {
   id: shell
@@ -80,6 +81,23 @@ ShellRoot {
   property Services.DisplayService displayService: Services.DisplayService {
     transport: shell.displayCommandTransport
   }
+  property Services.TelemetryService telemetryService: Services.TelemetryService { }
+  property Services.TelemetryCollector telemetryCollector: Services.TelemetryCollector {
+    telemetryService: shell.telemetryService
+    powerService: shell.powerService
+    discoveryScriptPath: Quickshell.shellDir + "/scripts/discover-telemetry-paths.py"
+  }
+  property Services.TelemetryInterpolation telemetryInterpolation: Services.TelemetryInterpolation {
+    sourceSnapshot: shell.telemetryService.snapshot
+    sourceRevision: shell.telemetryService.revision
+  }
+  property Lockscreen.MachineSynoptic machineSynoptic: Lockscreen.MachineSynoptic {
+    bridge: shell.awesomeBridge
+    telemetryService: shell.telemetryService
+    collector: shell.telemetryCollector
+    interpolation: shell.telemetryInterpolation
+    modalController: shell.modalController
+  }
   property Bar.PrimaryBar primaryBar: Bar.PrimaryBar {
     shellState: shell.shellState
     bridge: shell.awesomeBridge
@@ -106,6 +124,7 @@ ShellRoot {
   property Notifications.NotificationToasts notificationToasts: Notifications.NotificationToasts {
     notificationService: shell.notificationService
     targetScreen: shell.primaryBar.resolvedScreen
+    suppressed: shell.machineSynoptic.lockMode
   }
   property Switcher.WindowSwitcher windowSwitcher: Switcher.WindowSwitcher {
     bridge: shell.awesomeBridge
@@ -163,6 +182,10 @@ ShellRoot {
         keybindHelpReady: shell.keybindHelp !== null,
         keybindCount: shell.keybindHelp.entryCount,
         displayManagerReady: shell.displayManager !== null,
+        machineSynopticReady: shell.machineSynoptic !== null,
+        machineSynopticOpen: shell.machineSynoptic.open,
+        machineSynopticLockMode: shell.machineSynoptic.lockMode,
+        machineSynopticHealth: shell.machineSynoptic.telemetryHealth,
         trayReady: shell.primaryBar.systemTray !== null,
         trayActiveItems: shell.primaryBar.systemTray.activeCount,
         trayDirectItems: shell.primaryBar.systemTray.directCount,

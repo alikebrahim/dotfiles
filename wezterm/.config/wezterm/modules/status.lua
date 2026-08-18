@@ -21,6 +21,37 @@ local function compact_path(path)
     return path
 end
 
+-- Disk utilization for a given mount, with a short cache so we don't shell
+-- out to df on every 1-second status tick.
+local disk_cache = {}
+local DISK_CACHE_TTL = 5 -- seconds
+
+local function disk_usage(mount)
+    local now = os.time()
+    local entry = disk_cache[mount]
+    if entry and (now - entry.time) < DISK_CACHE_TTL then
+        return entry.value
+    end
+
+    local handle = io.popen("df -h " .. mount .. " 2>/dev/null")
+    if not handle then
+        return entry and entry.value
+    end
+    local output = handle:read("*a")
+    handle:close()
+
+    for line in output:gmatch("[^\r\n]+") do
+        if line:find("^/dev/") then
+            local pct = line:match("(%d+)%%")
+            if pct then
+                disk_cache[mount] = { value = tonumber(pct), time = now }
+                return disk_cache[mount].value
+            end
+        end
+    end
+    return entry and entry.value
+end
+
 local function clamp_title(s, max_width)
     if not s or s == "" then
         return "shell"
@@ -78,12 +109,12 @@ function M.setup(wezterm)
         -- Workspace name or current mode
         local stat = window:active_workspace()
         local stat_color = colors.active
-        
+
         if window:active_key_table() then
             stat = window:active_key_table()
             stat_color = colors.metric
         end
-        
+
         if window:leader_is_active() then
             stat = "LDR"
             stat_color = colors.alert
@@ -105,6 +136,10 @@ function M.setup(wezterm)
         -- Time
         local time = wezterm.strftime("%H:%M")
 
+        -- Disk utilization for the two NVMe mounts
+        local root_pct = disk_usage("/")
+        local home_pct = disk_usage("/home")
+
         -- Left status: classic bracketed workspace/mode label.
         window:set_left_status(wezterm.format({
             { Foreground = { Color = colors.muted } },
@@ -117,10 +152,18 @@ function M.setup(wezterm)
             { Text = "] |" },
         }))
 
-        -- Right status: classic text, active pane CWD, no modern icons.
+        -- Right status: disk utilization, active pane CWD, then time.
         window:set_right_status(wezterm.format({
             { Foreground = { Color = colors.muted } },
-            { Text = " [" },
+            { Text = " [/ " },
+            { Foreground = { Color = (root_pct and root_pct >= 80) and colors.alert or colors.metric } },
+            { Text = root_pct and (root_pct .. "%") or "—" },
+            { Foreground = { Color = colors.muted } },
+            { Text = "] [~ " },
+            { Foreground = { Color = (home_pct and home_pct >= 80) and colors.alert or colors.metric } },
+            { Text = home_pct and (home_pct .. "%") or "—" },
+            { Foreground = { Color = colors.muted } },
+            { Text = "] [" },
             { Foreground = { Color = colors.metric } },
             { Text = cwd },
             { Foreground = { Color = colors.muted } },
