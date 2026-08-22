@@ -245,9 +245,9 @@ state needing manual cleanup on servalws — annoying, recoverable, avoidable.
 ---
 
 ## 7. Proposed amendments (APPLIED 2026-08-17 — Ali approved; F1–F12 folded
-into design/02–04 + README. D1–D6, D8–D12 recorded as A the same day; D7
-open. Readiness pass E1–E4 fixes also applied. This section is the
-historical change list.)
+into design/02–04 + README. All of D1–D12 recorded as A the same day (D7:
+recommendation A accepted). Readiness pass E1–E4 fixes also applied. This
+section is the historical change list.)
 
 | Doc | Amendment | Finding |
 |---|---|---|
@@ -266,7 +266,7 @@ historical change list.)
 
 ## 8. Recommended action plan from here
 
-1. ~~Ali decides D1–D4~~ — decided 2026-08-17: A, A, A, A (D7 open).
+1. ~~Ali decides D1–D12~~ — decided 2026-08-17: all A.
 2. ~~Approve amendments in §7~~ — approved + applied 2026-08-17.
 3. Phase 1 spike with U1–U6 + U7/U8 from this review.
 4. Phase 2 with smoke test as exit gate.

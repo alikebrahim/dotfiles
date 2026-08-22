@@ -1,0 +1,17 @@
+{{/* authorized_keys: each host gets its own fragment (public key material,
+     same plaintext visibility as today's overlays; encryption is a later
+     phase per D4-A). Mode: 0600 everywhere (honor's 644 outlier tightened
+     to match the other hosts). tima@zotac-box has no authorized_keys
+     today — renders empty and chezmoi skips empty targets. */}}
+{{- $frag := "" -}}
+{{- if eq .chezmoi.hostname "servalws" }}{{ $frag = "servalws-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "netmaster" }}{{ $frag = "netmaster-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "minisforoum" }}{{ $frag = "minisforoum-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "macbook" }}{{ $frag = "macbook-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "honor" }}{{ $frag = "honor-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "zotac-box" -}}
+{{-   if ne .chezmoi.username "tima" }}{{ $frag = "zotac-box-alikebrahim-authorized_keys" }}{{ end }}
+{{- else -}}
+{{- fail (printf "Unknown hostname %q for authorized_keys dispatch" .chezmoi.hostname) }}
+{{- end -}}
+{{- if $frag }}{{ include (printf ".chezmoitemplates/ssh/%s.tmpl" $frag) }}{{ end -}}

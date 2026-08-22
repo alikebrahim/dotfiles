@@ -1,0 +1,39 @@
+[credential]
+	helper = store
+[user]
+	name = Ali K. Ebrahim
+	email = alikebrahim@me.com
+[filter "lfs"]
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+	clean = git-lfs clean -- %f
+[core]
+    pager = delta
+    editor = nvim
+
+[interactive]
+    diffFilter = delta --color-only
+
+[include]
+    path = ~/.config/delta/themes.gitconfig
+
+[delta]
+    navigate = true    # use n and N to move between diff sections
+    side-by-side = true
+
+    dark = true
+    features = collared-trogon
+     ; light = true
+
+[merge]
+    conflictstyle = diff3
+
+[diff]
+    colorMoved = default
+
+# SSH commit signing — file-based ed25519 key (~/.ssh/primary_key), no agent.
+# Present on hosts with the 1Password package (servalws, minisforoum), stowed
+# via that package. Git silently ignores the include if the file does not exist.
+[include]
+    path = ~/.config/git/1password-signing.gitconfig

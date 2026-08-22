@@ -1,0 +1,2 @@
+module modules.keybinds
+KeybindHelp 1.0 KeybindHelp.qml

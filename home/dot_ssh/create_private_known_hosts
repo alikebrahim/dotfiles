@@ -1,0 +1,4 @@
+# known_hosts seed — deployed only if the file does not exist yet.
+# After seeding, ssh owns this file; chezmoi status stays quiet while ssh
+# rewrites it (spike U8). Do not remove the comment lines (a non-empty
+# create_ source is required to materialize; empty sources silently no-op).

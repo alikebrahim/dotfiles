@@ -1,0 +1,90 @@
+{{/* install-packages: run_onchange — installs the host's toolset via
+     OS-native packages (dnf fedora / apt ubuntu). Content-hash keyed: the
+     toolset value is embedded in the rendered script, so changing it
+     re-runs. Renders EMPTY (script skipped) until Phase 4 activation.
+     Manual-hint tools (yazi on ubuntu) print a hint instead of failing. */}}
+{{- if .scripts.activateScripts | default false -}}
+#!/bin/bash
+set -euo pipefail
+{{- if ne .chezmoi.os "linux" }}
+# No native package automation on {{ .chezmoi.os }} — manual only.
+exit 0
+{{- end }}
+
+{{- $facts := index .hostFacts .chezmoi.hostname }}
+{{- $toolList := index .tools $facts.toolset }}
+os_id=unknown
+command -v dnf     >/dev/null 2>&1 && os_id=fedora
+command -v apt-get >/dev/null 2>&1 && os_id=ubuntu
+if [[ "$os_id" == unknown ]]; then
+    echo "skip: toolset install supports fedora/ubuntu only ({{ .chezmoi.os }})"
+    exit 0
+fi
+
+# Host toolset — resolved list embedded for content-hash tracking.
+TOOLSET="{{ $toolList | join " " }}"
+if [[ -z "$TOOLSET" ]]; then
+    echo "skip: no toolset configured for {{ .chezmoi.hostname }}"
+    exit 0
+fi
+
+# Package names per tool, ported from scripts/lib/tools.sh.
+pkg_for() { # $1=tool $2=os -> prints package name or nothing (manual)
+    local t="$1" os="$2"
+    case "$t" in
+        zsh|tmux|zoxide|fzf|lazygit|awesome) echo "$t" ;;
+        delta)  echo git-delta ;;
+        rg)     echo ripgrep ;;
+        fd)     echo fd-find ;;
+        yazi)   [[ "$os" == fedora ]] && echo yazi || echo "" ;;
+        *)      echo "" ;;
+    esac
+}
+
+missing=()
+for t in $TOOLSET; do
+    case "$t" in
+        fd) command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1 || missing+=("$t") ;;
+        *)  command -v "$t" >/dev/null 2>&1 || missing+=("$t") ;;
+    esac
+done
+
+if (( ${#missing[@]} == 0 )); then
+    echo "toolset current: $TOOLSET"
+    exit 0
+fi
+
+pkgs=()
+for t in "${missing[@]}"; do
+    p="$(pkg_for "$t" "$os_id")"
+    if [[ -n "$p" ]]; then
+        pkgs+=("$p")
+    else
+        case "$t" in
+            yazi) echo "MANUAL yazi: cargo install --locked yazi-fm yazi-cli" ;;
+            *)    echo "MANUAL $t: no native package on $os_id" ;;
+        esac
+    fi
+done
+
+if (( ${#pkgs[@]} > 0 )); then
+    echo "installing on $os_id: ${pkgs[*]}"
+    if [[ "$os_id" == fedora ]]; then
+        sudo dnf install -y "${pkgs[@]}"
+    else
+        sudo apt-get update
+        sudo apt-get install -y "${pkgs[@]}"
+    fi
+fi
+
+# Post-check report (non-fatal if a manual tool remains absent).
+for t in $TOOLSET; do
+    if command -v "$t" >/dev/null 2>&1; then
+        echo "OK $t"
+    elif [[ "$t" == fd ]] && command -v fdfind >/dev/null 2>&1; then
+        echo "OK fd (fdfind)"
+    else
+        echo "ABSENT $t (manual install may be required)"
+    fi
+done
+{{- end -}}

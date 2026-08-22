@@ -1,0 +1,448 @@
+local gears = require("gears")
+local awful = require("awful")
+local beautiful = require("beautiful")
+local workspace = require("signals").workspace
+
+local keys = {}
+local action_names = {
+    "bar_toggle",
+    "window_switcher",
+    "application_launcher",
+    "power_menu",
+    "keybind_help",
+    "display_manager",
+    "audio_controls",
+    "network_controls",
+    "bluetooth_controls",
+}
+local shell_actions = {}
+
+local function unavailable_action(name)
+    return function()
+        gears.debug.print_warning("Quickshell action is not configured: " .. name)
+    end
+end
+
+for _, name in ipairs(action_names) do
+    shell_actions[name] = unavailable_action(name)
+end
+
+function keys.configure_shell_actions(actions)
+    if type(actions) ~= "table" then return false end
+    for _, name in ipairs(action_names) do
+        if type(actions[name]) ~= "function" then return false end
+    end
+    for _, name in ipairs(action_names) do shell_actions[name] = actions[name] end
+    return true
+end
+
+-- Spatial focus helpers.
+--
+-- Policy:
+--   - visible normal application clients participate whether tiled or floating;
+--   - docks, dialogs, minimized clients, and the scratchpad do not participate;
+--   - visible/current-tag clients only: no jumping to other workspaces;
+--   - minimized clients are ignored;
+--   - maximized and fullscreen clients still participate, but h/l from
+--     such a client jumps to the previous/next screen immediately;
+--   - when arriving at a target screen, a fullscreen or maximized client
+--     is preferred — it's the window the user actually sees.
+local function screen_sort_key(s)
+    local g = s.geometry
+    return g.x, g.y, s.index
+end
+
+local function sorted_screens()
+    local screens = {}
+    for s in screen do
+        table.insert(screens, s)
+    end
+
+    table.sort(screens, function(a, b)
+        local ax, ay, ai = screen_sort_key(a)
+        local bx, by, bi = screen_sort_key(b)
+
+        if ax ~= bx then return ax < bx end
+        if ay ~= by then return ay < by end
+        return ai < bi
+    end)
+
+    return screens
+end
+
+local function client_sort_key(c)
+    local g = c:geometry()
+    return g.x, g.y, c.window
+end
+
+local function is_spatial_focus_client(c)
+    if not c or not c.valid then return false end
+
+    local class = tostring(c.class or ""):lower()
+    return c.type == "normal"
+        and class ~= "scratchpad"
+        and not c.minimized
+        and c:isvisible()
+end
+
+local function sorted_spatial_clients_for_screen(s)
+    local clients = {}
+
+    for _, c in ipairs(client.get()) do
+        if c.screen == s and is_spatial_focus_client(c) then
+            table.insert(clients, c)
+        end
+    end
+
+    table.sort(clients, function(a, b)
+        local ax, ay, aw = client_sort_key(a)
+        local bx, by, bw = client_sort_key(b)
+
+        if ax ~= bx then return ax < bx end
+        if ay ~= by then return ay < by end
+        return aw < bw
+    end)
+
+    return clients
+end
+
+local function get_all_spatial_clients_sorted()
+    local clients = {}
+
+    for _, s in ipairs(sorted_screens()) do
+        for _, c in ipairs(sorted_spatial_clients_for_screen(s)) do
+            table.insert(clients, c)
+        end
+    end
+
+    return clients
+end
+
+local function focus_client(c)
+    if not c or not c.valid then return end
+
+    client.focus = c
+    awful.screen.focus(c.screen)
+    c:raise()
+end
+
+local function find_dominant_client(clients)
+    -- Return the fullscreen or maximized client from a list, if any.
+    -- Such a client occludes everything behind it on that screen, so it's
+    -- the window the user actually sees and expects to focus.
+    for _, c in ipairs(clients) do
+        if c.fullscreen or c.maximized then
+            return c
+        end
+    end
+    return nil
+end
+
+local function focus_screen_edge_client(from_screen, direction)
+    local screens = sorted_screens()
+    if #screens == 0 then return false end
+
+    local current_index = 1
+    for i, s in ipairs(screens) do
+        if s == from_screen then
+            current_index = i
+            break
+        end
+    end
+
+    for step = 1, #screens - 1 do
+        local target_index = current_index + (direction * step)
+        while target_index < 1 do target_index = target_index + #screens end
+        while target_index > #screens do target_index = target_index - #screens end
+
+        local clients = sorted_spatial_clients_for_screen(screens[target_index])
+        if #clients > 0 then
+            -- Prefer a fullscreen or maximized client: it's the visible
+            -- window the user sees, not whatever is behind it.
+            local dominant = find_dominant_client(clients)
+            if dominant then
+                focus_client(dominant)
+            elseif direction > 0 then
+                focus_client(clients[1])
+            else
+                focus_client(clients[#clients])
+            end
+            return true
+        end
+    end
+
+    return false
+end
+
+local function focus_spatial(direction)
+    local current = client.focus
+    if not current or not current.valid then return end
+
+    -- When the current client is maximized or fullscreen, jump directly
+    -- to the edge client of the previous/next screen.
+    if current.maximized or current.fullscreen then
+        if focus_screen_edge_client(current.screen, direction) then
+            return
+        end
+    end
+
+    local clients = get_all_spatial_clients_sorted()
+    if #clients == 0 then return end
+
+    for i, c in ipairs(clients) do
+        if c == current then
+            local target_index = i + direction
+            if target_index < 1 then target_index = #clients end
+            if target_index > #clients then target_index = 1 end
+
+            local target = clients[target_index]
+            -- If crossing to a different screen, prefer that screen's
+            -- fullscreen/maximized client (the visible window).
+            if target.screen ~= current.screen then
+                local screen_clients = sorted_spatial_clients_for_screen(target.screen)
+                local dominant = find_dominant_client(screen_clients)
+                if dominant then target = dominant end
+            end
+
+            focus_client(target)
+            return
+        end
+    end
+
+    -- If the current client does not participate, e.g. it is floating, fall back
+    -- to the nearest edge of the visible tiled set.
+    local fallback = direction > 0 and clients[1] or clients[#clients]
+    if fallback then
+        local screen_clients = sorted_spatial_clients_for_screen(fallback.screen)
+        local dominant = find_dominant_client(screen_clients)
+        focus_client(dominant or fallback)
+    end
+end
+
+local function view_tag_index_all_screens(index)
+    return workspace.view_index(index)
+end
+
+local function toggle_tag_index_all_screens(index)
+    -- The synchronized desktop model permits exactly one logical workspace.
+    -- Keep this legacy export as a view alias rather than reintroducing a
+    -- multi-tag selection path.
+    return workspace.view_index(index)
+end
+
+local function view_workspace_relative_all_screens(direction)
+    return workspace.view_relative(direction)
+end
+
+-- Reuse the same synchronized workspace policy from bar mouse bindings.
+keys.workspace = workspace
+keys.view_tag_index_all_screens = view_tag_index_all_screens
+keys.toggle_tag_index_all_screens = toggle_tag_index_all_screens
+keys.view_workspace_relative_all_screens = view_workspace_relative_all_screens
+
+-- Screen detection by spatial position (left/right)
+local function get_screen_by_side(side)
+    if screen.count() == 0 then return nil end
+    if screen.count() == 1 then return screen[1] end
+    local screens = {}
+    for s in screen do table.insert(screens, s) end
+    table.sort(screens, function(a, b) return a.geometry.x < b.geometry.x end)
+    return side == "left" and screens[1] or screens[#screens]
+end
+
+-- Launch an app on a specific workspace/screen, switch there, and focus it
+local function launch_app(cmd, ws_idx, screen_side)
+    local target_screen = get_screen_by_side(screen_side)
+    if not target_screen then return end
+    local tag = target_screen.tags[ws_idx]
+    if not tag then return end
+    view_tag_index_all_screens(ws_idx)
+    awful.spawn(cmd, {
+        tag = tag,
+        screen = target_screen,
+        placement = awful.placement.no_overlap + awful.placement.no_offscreen,
+        callback = function(c)
+            if c and c.valid then
+                client.focus = c
+                c:raise()
+            end
+        end,
+    })
+end
+
+
+-- -----------------------------------------------------------------------------
+-- Global Keys
+-- -----------------------------------------------------------------------------
+keys.globalkeys = gears.table.join(
+  awful.key({ modkey }, "s", function() shell_actions.keybind_help() end, { description = "show keybinds", group = "awesome" }),
+
+  -- Launcher
+  awful.key({ modkey }, "Return", function() awful.spawn(terminal) end, { description = "open terminal", group = "launcher" }),
+  awful.key({ modkey, "Shift" }, "Return", function() awful.spawn(browser) end, { description = "open browser", group = "launcher" }),
+  awful.key({ modkey }, "Tab", function() shell_actions.window_switcher() end, { description = "window switcher [WS:SCREEN]", group = "launcher" }),
+  awful.key({ modkey }, "space", function() shell_actions.application_launcher() end, { description = "application launcher", group = "launcher" }),
+  awful.key({ "Mod1" }, "space", function() shell_actions.bar_toggle() end, { description = "toggle shell bar", group = "awesome" }),
+  awful.key({ modkey }, "f", function() awful.spawn("nautilus") end, { description = "open files", group = "launcher" }),
+  awful.key({ modkey }, "p", function() shell_actions.display_manager() end, { description = "display manager", group = "system" }),
+  awful.key({ modkey }, "u", function() awful.spawn("/home/alikebrahim/.config/scripts/wm-stabilize.sh") end, { description = "refresh monitors/UI", group = "system" }),
+  awful.key({ modkey }, "Escape", function() shell_actions.power_menu() end, { description = "power menu", group = "system" }),
+  awful.key({ modkey, "Shift" }, "a", function() shell_actions.audio_controls() end, { description = "audio controls", group = "system" }),
+  awful.key({ modkey, "Shift" }, "w", function() shell_actions.network_controls() end, { description = "wi-fi controls", group = "system" }),
+  awful.key({ modkey, "Shift" }, "b", function() shell_actions.bluetooth_controls() end, { description = "bluetooth controls", group = "system" }),
+  awful.key({ modkey }, "grave", function() require("dynamism").term_scratch:toggle() end, { description = "toggle scratchpad", group = "launcher" }),
+
+  -- App launchers (pinned to workspaces, focus on open)
+  awful.key({ modkey }, "e", function() launch_app("proton-mail", 3, "right") end, { description = "launch Proton Mail (ws 3, right)", group = "launcher" }),
+  awful.key({ modkey }, "d", function() launch_app("/usr/bin/Discord", 2, "right") end, { description = "launch Discord (ws 2, right)", group = "launcher" }),
+  awful.key({ modkey }, "w", function() launch_app("google-chrome --app=https://web.whatsapp.com", 2, "left") end, { description = "launch WhatsApp (ws 2, left)", group = "launcher" }),
+
+  -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
+  awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
+  awful.key({ modkey }, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh full") end, { description = "full screenshot", group = "screenshots" }),
+  awful.key({ modkey, "Shift" }, "s", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "region screenshot", group = "screenshots" }),
+
+  awful.key({ modkey, "Shift" }, "space", function () awful.layout.inc( 1) end, {description = "select next layout", group = "layout"}),  
+
+  -- Navigation (spatial focus across screens)
+  awful.key({ modkey }, "h", function()
+      focus_spatial(-1)
+  end, {description = "focus previous tiled window/screen (spatial)", group = "client"}),
+
+  awful.key({ modkey }, "l", function()
+      focus_spatial(1)
+  end, {description = "focus next tiled window/screen (spatial)", group = "client"}),
+
+  awful.key({ modkey }, "k", function() awful.client.focus.bydirection("up"); if client.focus then client.focus:raise() end end, {description = "focus up", group = "client"}),
+  awful.key({ modkey }, "j", function() awful.client.focus.bydirection("down"); if client.focus then client.focus:raise() end end, {description = "focus down", group = "client"}),
+
+  awful.key({ modkey, "Control" }, "h", function()
+      if screen.count() > 1 then
+          awful.screen.focus_relative(-1)
+          local cls = awful.screen.focused().tiled_clients
+          if #cls > 0 then
+              client.focus = cls[1]
+              cls[1]:raise()
+          end
+      end
+  end, {description = "focus previous screen", group = "screen"}),
+
+  awful.key({ modkey, "Control" }, "l", function()
+      if screen.count() > 1 then
+          awful.screen.focus_relative(1)
+          local cls = awful.screen.focused().tiled_clients
+          if #cls > 0 then
+              client.focus = cls[1]
+              cls[1]:raise()
+          end
+      end
+  end, {description = "focus next screen", group = "screen"}),
+
+  awful.key({ modkey, "Control" }, "k", function()
+      view_workspace_relative_all_screens(1)
+  end, {description = "view next workspace on all screens", group = "tag"}),
+  awful.key({ modkey, "Control" }, "j", function()
+      view_workspace_relative_all_screens(-1)
+  end, {description = "view previous workspace on all screens", group = "tag"}),
+
+  awful.key({ modkey, "Shift" }, "h", function()
+      -- Move focused window to left screen
+      if client.focus and screen.count() > 1 then
+          local current_screen = client.focus.screen
+          local target_screen = current_screen.index - 1
+          if target_screen < 1 then target_screen = screen.count() end
+          client.focus:move_to_screen(target_screen)
+          awful.screen.focus(target_screen)
+          if client.focus then client.focus:raise() end
+      end
+  end, {description = "move window to left screen", group = "screen"}),
+
+  awful.key({ modkey, "Shift" }, "l", function()
+      -- Move focused window to right screen
+      if client.focus and screen.count() > 1 then
+          local current_screen = client.focus.screen
+          local target_screen = current_screen.index + 1
+          if target_screen > screen.count() then target_screen = 1 end
+          client.focus:move_to_screen(target_screen)
+          awful.screen.focus(target_screen)
+          if client.focus then client.focus:raise() end
+      end
+  end, {description = "move window to right screen", group = "screen"}),
+
+  awful.key({ modkey, "Control", "Shift" }, "k", function()
+      if client.focus then workspace.move_client_relative(client.focus, 1, true) end
+  end, {description = "move client to next workspace and follow (all screens)", group = "tag"}),
+  awful.key({ modkey, "Control", "Shift" }, "j", function()
+      if client.focus then workspace.move_client_relative(client.focus, -1, true) end
+  end, {description = "move client to previous workspace and follow (all screens)", group = "tag"}),
+
+  -- Reload / quit
+  awful.key({ modkey, "Shift" }, "r", function()
+      local runtime_dir = os.getenv("XDG_RUNTIME_DIR") or gears.filesystem.get_cache_dir()
+      local state_path = runtime_dir .. "/awesome-state"
+      local f = io.open(state_path, "w")
+      if f then
+          -- Line 1: Screen Index
+          f:write(awful.screen.focused().index .. "\n")
+          -- Line 2: Focus Window ID
+          f:write((client.focus and tostring(client.focus.window) or "nil") .. "\n")
+          -- Line 3: One authoritative workspace index for every screen.
+          f:write(workspace.current_index() .. "\n")
+          f:close()
+      end
+      awesome.restart()
+  end, { description = "reload awesome", group = "awesome" }),
+  awful.key({ modkey, "Shift" }, "q", awesome.quit, { description = "quit awesome", group = "awesome" })
+)
+
+-- Workspaces 1-5
+-- Viewing selects one index on every screen. Moving keeps the client on its
+-- current screen's tag stack, then follows that index on every output.
+for i = 1, 5 do
+  keys.globalkeys = gears.table.join(keys.globalkeys,
+    awful.key({ modkey }, "#" .. i + 9, function()
+      view_tag_index_all_screens(i)
+    end, { description = "view workspace " .. i .. " (all screens)", group = "workspace" }),
+    awful.key({ modkey, "Shift" }, "#" .. i + 9, function()
+      if client.focus then workspace.move_client_to_index(client.focus, i, true) end
+    end, { description = "move client to workspace " .. i .. " and follow (all screens)", group = "workspace" })
+  )
+end
+
+-- -----------------------------------------------------------------------------
+-- Client Keys
+-- -----------------------------------------------------------------------------
+keys.clientkeys = gears.table.join(
+    awful.key({ modkey }, "m", function(c)
+        c.maximized = not c.maximized
+        c.border_width = c.maximized and 0 or beautiful.border_width
+        c:raise()
+    end, { description = "toggle maximize", group = "client" }),
+    awful.key({ modkey }, "q", function(c) c:kill() end, { description = "close", group = "client" }),
+    awful.key({ modkey }, "t", awful.client.floating.toggle, 
+              { description = "toggle floating", group = "client" }),
+    awful.key({ modkey, "Control", "Shift" }, "t", function(c) awful.titlebar.toggle(c) end,
+              { description = "toggle titlebar", group = "client" })
+)
+
+-- -----------------------------------------------------------------------------
+-- Client Buttons
+-- -----------------------------------------------------------------------------
+keys.clientbuttons = gears.table.join(
+  awful.button({}, 1, function(c)
+    client.focus = c
+    c:raise()
+  end),
+  awful.button({ modkey }, 1, function(c)
+    client.focus = c
+    c:raise()
+    awful.mouse.client.move(c)
+  end),
+  awful.button({ modkey }, 3, function(c)
+    client.focus = c
+    c:raise()
+    awful.mouse.client.resize(c)
+  end)
+)
+
+return keys

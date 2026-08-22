@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=LM Studio
+Exec=lmstudio %u
+Terminal=false
+Type=Application
+Icon=lmstudio
+StartupWMClass=lmstudio
+Comment=LM Studio
+Categories=Science;

@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+# note: quick note finder and creator for the axmi Obsidian vault.
+#
+# One screen: fuzzy search over note file names AND note text at once.
+# Enter opens the match in the editor (at the exact line for text
+# matches). Creating notes is plain verbs — no menus, no agents.
+
+set -o pipefail
+
+NOTES_DIR="${AXMI_NOTES_DIR:-${HOME}/Documents/obsidian-silo/axmi}"
+DAILY_TEMPLATE="${NOTES_DIR}/templates/user/daily.md"
+PROJECT_TEMPLATE="${NOTES_DIR}/templates/user/project.md"
+NOTE_EDITOR="${NOTE_EDITOR:-${EDITOR:-nvim}}"
+PYTHON_BIN='/usr/bin/python3'
+
+usage() {
+  cat <<'EOF'
+note - find and create notes
+
+  note                     fuzzy search note names + text, open matches
+  note daily [title]       create/open today's daily note
+  note diary [title]       create/open today's diary note
+  note project "Title"     create/open a project note (canonical record)
+  note <path>              open an existing note (vault-relative .md)
+
+Editor: NOTE_EDITOR (default: $EDITOR, then nvim)
+EOF
+}
+
+fail() {
+  printf 'note: %s\n' "$*" >&2
+  return 1
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+}
+
+editor_available() {
+  local -a editor_command
+  read -r -a editor_command <<<"$NOTE_EDITOR"
+  ((${#editor_command[@]} > 0)) || {
+    fail 'NOTE_EDITOR is empty'
+    return 1
+  }
+  require_command "${editor_command[0]}"
+}
+
+# Combined index: one entry per file (path + line 1), then one entry per
+# non-empty line of every note (path + line + text). fzf fuzzy-matches the
+# whole entry, so a query hits file names and note text in the same list.
+# Field layout: path<TAB>line<TAB>display. File entries have an empty
+# display field.
+note_search_entries() {
+  cd "$NOTES_DIR" 2>/dev/null || return 1
+  local files
+  files="$(fd --type f --extension md --exclude templates --exclude agent --strip-cwd-prefix . | sort)" || return 1
+  printf '%s\n' "$files" | awk '{print $0 "\t1\t"}'
+  rg -n --no-heading --no-ignore -e '^' \
+    --glob '*.md' --glob '!templates/**' --glob '!agent/**' . 2>/dev/null |
+    sed 's#^\./##' |
+    awk -F: '{
+      text = $3
+      for (i = 4; i <= NF; i++) text = text ":" $i
+      sub(/^[ \t]+/, "", text)
+      sub(/[ \t]+$/, "", text)
+      if (text != "") print $1 "\t" $2 "\t" $2 ": " text
+    }'
+}
+
+search_screen() {
+  local entries selection relpath lineno
+  entries="$(note_search_entries)" || {
+    fail 'could not index the vault'
+    return 1
+  }
+  selection="$(printf '%s\n' "$entries" | fzf \
+    --layout=reverse \
+    --height=100% \
+    --border=rounded \
+    --prompt='find> ' \
+    --header='type to search names + text · Enter opens · Esc/Ctrl-Q exits' \
+    --delimiter=$'\t' \
+    --with-nth=1,3 \
+    --info=inline \
+    --bind='ctrl-q:abort,esc:abort' \
+    --preview='bat --color=always --style=numbers --highlight-line {2} --line-range :$(({2}+300)) -- "{1}"' \
+    --preview-window='right,60%,wrap')"
+  [[ -n "$selection" ]] || return 0
+  IFS=$'\t' read -r relpath lineno _rest <<<"$selection"
+  [[ -n "$relpath" && "$lineno" =~ ^[0-9]+$ ]] || {
+    fail 'unexpected selection'
+    return 1
+  }
+  open_note "$relpath" "$lineno"
+}
+
+open_note() {
+  local relpath="$1" line="${2:-1}"
+  local -a editor_command
+  read -r -a editor_command <<<"$NOTE_EDITOR"
+  ((${#editor_command[@]} > 0)) || {
+    fail 'NOTE_EDITOR is empty'
+    return 1
+  }
+  require_command "${editor_command[0]}" || return 1
+  cd "$NOTES_DIR" || return 1
+  exec "${editor_command[@]}" "+${line}" -- "$relpath"
+}
+
+create_dated_note() {
+  local note_type="$1" note_name="${2:-}" note_date relpath template_arg
+  note_date="$(date +%F)"
+  case "$note_type" in
+  daily)
+    relpath="daily/${note_date}.md"
+    template_arg="$DAILY_TEMPLATE"
+    ;;
+  diary)
+    relpath="diary/${note_date}.md"
+    template_arg=''
+    ;;
+  esac
+  local python_status
+  "$PYTHON_BIN" - "$NOTES_DIR" "$relpath" "$note_date" "$note_name" "$template_arg" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+root, rel, note_date, name, template = sys.argv[1:6]
+target = Path(root) / rel
+title = name or note_date
+if not target.exists():
+    if template:
+        content = Path(template).read_text(encoding="utf-8")
+        if "{{date:YYYY-MM-DD}}" not in content:
+            raise SystemExit("daily template drift: expected {{date:YYYY-MM-DD}}")
+        content = content.replace("{{date:YYYY-MM-DD}}", note_date)
+        content = content.replace("title: ''", f"title: {json.dumps(title, ensure_ascii=False)}", 1)
+        content = content.replace(f"# {note_date}", f"# {title}", 1)
+    else:
+        content = (
+            f"---\ntitle: {json.dumps(title, ensure_ascii=False)}\n"
+            f"created: '{note_date}'\ntype: diary\ntags: []\n---\n\n# {title}\n"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        pass
+    else:
+        try:
+            os.write(fd, content.encode("utf-8"))
+        finally:
+            os.close(fd)
+PY
+  python_status=$?
+  ((python_status == 0)) || {
+    fail 'could not create the note'
+    return 1
+  }
+  open_note "$relpath"
+}
+
+create_project() {
+  local title="$1" result python_status
+  result="$("$PYTHON_BIN" - "$NOTES_DIR" "$PROJECT_TEMPLATE" "$title" <<'PY'
+import datetime
+import json
+import os
+import re
+import sys
+import unicodedata
+from pathlib import Path
+
+root = Path(sys.argv[1])
+template_path = Path(sys.argv[2])
+title = " ".join(sys.argv[3].split())
+slug = re.sub(
+    r"[^a-z0-9]+",
+    "-",
+    unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode("ascii").lower(),
+).strip("-")
+if not slug:
+    raise SystemExit("title has no characters usable in a slug")
+rel = Path("records/projects") / slug / "project.md"
+target = root / rel
+created = False
+if not target.exists():
+    content = template_path.read_text(encoding="utf-8")
+    if "# {{title}}" not in content or not any(
+        line.startswith("id:") for line in content.splitlines()[:12]
+    ):
+        raise SystemExit("project template drift: expected # {{title}} and id: frontmatter")
+    content = content.replace("# {{title}}", f"# {title}", 1)
+    stamp = datetime.date.today().isoformat()
+    out = []
+    for line in content.splitlines(keepends=True):
+        if line.startswith("title:"):
+            line = f"title: {json.dumps(title, ensure_ascii=False)}\n"
+        elif line.startswith("id:"):
+            line = f"id: proj-{slug}\n"
+        elif line.startswith("created:"):
+            line = f"created: '{stamp}'\n"
+        elif line.startswith("updated:"):
+            line = f"updated: '{stamp}'\n"
+        out.append(line)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        pass
+    else:
+        try:
+            os.write(fd, "".join(out).encode("utf-8"))
+        finally:
+            os.close(fd)
+        created = True
+print(f"{'created' if created else 'exists'}\tproj-{slug}\t{rel}")
+PY
+)"
+  python_status=$?
+  ((python_status == 0)) || {
+    fail 'could not create the project'
+    return 1
+  }
+  open_note "${result##*$'\t'}"
+}
+
+open_by_path() {
+  local path="$1"
+  case "$path" in
+  /* | *\.\.*) fail "not a vault-relative path: $path" ;;
+  *)
+    [[ "$path" == *.md ]] || {
+      fail 'only Markdown files can be opened'
+      return 1
+    }
+    [[ -f "$NOTES_DIR/$path" ]] || {
+      fail "no such note: $path"
+      return 1
+    }
+    open_note "$path"
+    ;;
+  esac
+}
+
+main() {
+  local cmd="${1:-}"
+  if (($# > 2)); then
+    fail 'unexpected extra arguments; quote multi-word note names'
+    usage >&2
+    return 2
+  fi
+  case "$cmd" in
+  '')
+    for tool in fzf fd rg bat; do
+      require_command "$tool" || return 1
+    done
+    search_screen
+    ;;
+  daily | diary)
+    editor_available || return 1
+    create_dated_note "$cmd" "${2:-}"
+    ;;
+  project)
+    [[ -x "$PYTHON_BIN" ]] || {
+      fail 'required Python interpreter is unavailable: '"$PYTHON_BIN"
+      return 1
+    }
+    editor_available || return 1
+    [[ -n "${2//[[:space:]]/}" ]] || {
+      fail 'a project needs a name: note project "Title"'
+      return 2
+    }
+    create_project "$2"
+    ;;
+  -h | --help)
+    usage
+    ;;
+  *)
+    open_by_path "$cmd"
+    ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

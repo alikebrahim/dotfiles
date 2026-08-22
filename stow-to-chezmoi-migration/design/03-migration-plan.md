@@ -17,7 +17,10 @@ git operations and never deployments without authorization.
    `analysis/03-baseline-2026-08.md` for comparison after migration.
 3. Decide legacy-surface dispositions (D9) — can wait until Phase 2.
 
-**Exit:** decisions recorded; baseline captured.
+**Exit:** decisions recorded; baseline captured. *(Completed 2026-08-18:
+all 12 decisions A; `analysis/03-baseline-2026-08.md` written from live
+read-only capture — 130 stow symlinks / 0 broken, doctor green, chezmoi
+v2.72.0 already present, age absent.)*
 
 ---
 
@@ -67,6 +70,10 @@ on servalws (readiness E6, verified 2026-08-17) — use podman rootless.
 
 **Exit:** spike report written to `design/05-spike-report.md`; unknown list
 closed or re-scoped; final file-model split (D2) confirmed.
+*(Completed 2026-08-18: all U1–U8 closed — see `design/05-spike-report.md`.
+Headline: architecture validated, Seq A confirmed as Phase 3 default,
+ssh-overlay raw `stow -D` rehearsed (E1 closed), four minor corrections
+S1–S4 folded into design/02 + this plan.)*
 
 ---
 
@@ -81,6 +88,13 @@ closed or re-scoped; final file-model split (D2) confirmed.
    alacritty (if kept), ssh fragments, known_hosts seeds.
    - Rename per chezmoi conventions (`dot_`, `private_`, `executable_`,
      `create_`, `symlink_`, `.tmpl`).
+   - **Spike-derived authoring rules (2026-08-18):** every data key
+     referenced by a template must exist in `.chezmoidata.toml` (S2 —
+     `| default` does not guard missing keys); every `create_` source must
+     be non-empty — seed a comment line (S2); directory symlinks are
+     `symlink_<name>` FILES containing the target path, never `chattr` on a
+     dir (S1); `add` auto-relativizes absolute symlink targets, so imported
+     links natively satisfy the relative-only rule (U3).
    - Templates only where the design says so.
    - Write the `.chezmoiignore` selection template from the profile matrix.
    - Move module *assets* only as needed for Phase 4 scripts.
@@ -97,10 +111,34 @@ top-level dirs are never inferred; add a doctor skip for `home/` if needed).
 
 **Exit:** new tree builds and `chezmoi diff` (spike HOME) shows the expected
 targets; **container smoke test passes** (fresh container →
-`get.chezmoi.io` → `init --apply` → `verify` exit 0 → script effects
+`init --apply` → `verify` exit 0 → script effects
 checked) — moved here from Phase 6 per GLM review F2, so the first real
 host conversion is rehearsed, not experimental; Ali reviews the tree
 layout.
+
+**EXIT STAMP (2026-08-19): PASSED.** Built and validated:
+- `home/` = 299 source files (bulk copy + authored specials; see
+  `design/06-phase2-record.md` for the full build record).
+- Six-host container matrix (podman, real `--hostname` per host):
+  `apply` rc=0 on all; second apply idempotent; `diff` clean;
+  file counts 56/275/86/56/56/55 exactly match the profile matrix;
+  per-host tmux themes, ssh dispatch, zotac user gating, honor's
+  known_hosts absence — all correct.
+- Smoke exit gate (fresh fedora-minimal container, Syncthing model —
+  no git): `chezmoi init --source` renders the config template cleanly,
+  `apply` rc=0, `verify` exit 0, idempotent, modes faithful
+  (ssh config 644, authorized_keys 600, known_hosts seed 600, zshrc 644).
+- Script off-switch proven both ways: inert tree renders all four
+  `run_*` scripts to 0 bytes (skipped entirely); a flag-flipped copy
+  renders valid bash (shebang + `bash -n` OK) with correct per-host
+  toolset resolution and servalws-only gating.
+- Two smoke-test finds fixed en route: config template must be
+  data-free (`.chezmoidata` is not yet parsed at init time — the
+  `[data]` mirror broke fresh bootstrap; all templates now read
+  hostFacts directly); `known_hosts` seed is `create_private_` (live
+  file is 0600).
+- Stow packages untouched; old system fully intact (verified: no
+  package dirs modified; `home/` is not catalogued).
 
 ---
 
@@ -122,13 +160,21 @@ Per host, with explicit approval per step:
    diffs stay readable.
 2. **Conversion sequence per package tree (GLM review F1 fix — never
    apply-then-unstow wholesale):**
-   a. `chezmoi add --follow --secrets=error <tree>` — imports the stow
-      symlink targets as managed source, with secrets hygiene at import.
-   b. `chezmoi chattr` adjustments for the hybrid model (D2-A).
-   c. **Seq A (default):** unstow that one package while its links are
-      still links (`configure-host.sh prune --stow-package <id>`, run by
-      the user) — clean removal — then immediately `chezmoi apply` for
-      that tree to materialize real files. The unstow→apply gap is
+   a. ~~`chezmoi add --follow --secrets=error <tree>`~~ — **removed by spike
+      S1 (U3/U7, 2026-08-18): `add --follow` refuses directory recursion
+      ("follow and recursive are mutually exclusive"), so it cannot import
+      stow trees.** Import happens in Phase 2 authoring (content already
+      copied to chezmoi names under `home/`); Phase 3 starts from the
+      authored source, not a live `add`.
+   b. `chezmoi chattr` adjustments for the hybrid model (D2-A) — done at
+      authoring time in Phase 2.
+   c. **Seq A (default — spike-confirmed U7, 2026-08-18):** unstow that one
+      package while its links are still links
+      (`configure-host.sh prune --stow-package <id>`, run by the user) —
+      clean removal — then immediately `chezmoi apply` for that tree to
+      materialize real files. Container rehearsal: unstow clean, apply
+      materialized real files with correct exec bits, status clean, zero
+      dangling links. The unstow→apply gap is
       seconds; an app reading a config inside that window sees a
       momentary missing file (low but real — GLM:88), kept bounded by
       per-package granularity.
@@ -156,10 +202,18 @@ Per host, with explicit approval per step:
 
 **servalws conversion order:** start with one leaf package (e.g. `delta` or
 `picom`) to prove the chosen sequence live, then batch the static packages,
-and convert the `symlink_` desktop trees (wezterm, awesome, quickshell,
+and convert the desktop trees (wezterm, awesome, quickshell,
 awesome_wm_scripts) last — they are the live-edit surfaces. Install the
 `dot` / `dot-apply` / `dot-edit` / `chx` aliases on day one (R1 mitigation),
 not as later polish.
+
+> **EXECUTED 2026-08-19 — see design/07-phase3-record.md.** Batches:
+> 1 (delta/picom/flameshot, 3 links) → 2 (shells/git/vim/nvim/my-bin/
+> tmux-remote+overlay, 51) → 3 (ssh overlay, 2 — apply replaced the
+> symlinks; `allowed_signers` completed, repo-ahead since Aug 15) →
+> 4 (desktop trees as files, 220, incl. 1Password archive handling per user
+> note). lazy-lock.json seeded as real file (app-owned). Status clean,
+> idempotent, zero dotfiles symlinks left. `~/vimium` hand-link untouched.
 
 Special cases:
 - **servalws**: after home conversion, Phase 4 (modules/tools) before
@@ -184,8 +238,9 @@ confirms behavior.
    polkit package, gnome-keyring units — ported from `module-runner.sh`
    logic, preserving `install -D` + `cmp` self-verification and
    idempotency. Hostname-guarded to servalws.
-3. tmux plugins: port `--ensure` to a `run_after_` script or
-   `.chezmoiexternal` (D7); `--update` stays manual.
+3. tmux plugins: port `--ensure` to `run_after_ensure-tmux-plugins.sh`
+   (DECIDED D7-A, 2026-08-17; `.chezmoiexternal` rejected); `--update`
+   stays manual.
 4. Test in a container (see Phase 6 validation) before touching servalws.
 5. On servalws: `chezmoi apply` with the scripts; verify each module's
    `cmp`/`systemctl is-active` state.
@@ -222,6 +277,31 @@ confirms behavior.
 2. Rewrite `docs/configure-host.md` → `docs/chezmoi.md` operator manual
    (daily commands, new-machine runbook, zotac dual-user section, secrets
    recovery).
+   **Keys in the repo (user decision 2026-08-19): once the migration is
+   done, Ali will add the SSH keys to the repo — age-encrypted per D4-A —
+   for safekeeping and easy installation on new hosts. Prerequisites this
+   implies: age recipient configured per user; encrypted files land as
+   `encrypted_private_*` (0600 at rest after decryption); the docs must
+   cover the bootstrap path (passphrase-protected `key.txt.age` in the
+   repo + new-host unlock flow) and the zotac-box dual-user wrinkle
+   (per-user recipients, tima ≠ alikebrahim). Not before fleet soak
+   passes — keys enter only after Phase 5 entry gate is green.**
+   **Lesson (user request 2026-08-19): once the migration is done, walk Ali
+   through managing the repo and the tool landscape — chezmoi daily-driver
+   commands (apply/status/diff/edit/add, chx), the run_* script system,
+   hostFacts data model, snapshots/rollback anchors, and what replaced
+   what (stow → chezmoi, configure-host → scripts + docs). Beginner-first,
+   plain-English, tied to real files in this repo.**
+   **Hyprland/Noctalia replication (user request 2026-08-21): minisforoum
+   runs Hyprland + Noctalia shell, configured by hand on that machine —
+   deliberately NOT in the dotfiles farm (hostFacts desktop=false) and
+   untouched by the migration (verified: no managed paths, mtimes
+   pre-conversion, session never interrupted). Ali wants the ABILITY to
+   replicate that setup on a future machine: capture the live configs
+   (~/.config/hypr, ~/.config/noctalia) as a restore kit — either a
+   documented tarball path or a new opt-in chezmoi package gated by a
+   hostFact — so a fresh machine can be rebuilt to match. Decide shape at
+   Phase 5 docs time; nothing moves until then.**
 3. Update AGENTS.md/.hermes.md (user-owned) to the new model: no more stow
    commands for agents; chezmoi apply is a live deployment requiring
    approval; `home/` is the source of truth.

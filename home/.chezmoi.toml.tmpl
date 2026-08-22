@@ -1,0 +1,14 @@
+{{/* .chezmoi.toml.tmpl — renders the ENTIRE per-host config (spike S3:
+     init re-renders from this template; manual edits get wiped).
+     Deliberately data-free: at init time the source dir is only just
+     becoming known, so .chezmoidata.toml is NOT yet parsed — referencing
+     hostFacts here breaks fresh-host bootstrap (caught in Phase-2 smoke).
+     All templates read .chezmoidata.toml directly; no [data] mirror.
+     age settings: none yet — when secrets encryption activates (later
+     phase), the [age] section must be added HERE, not by hand. */}}
+sourceDir = {{ .chezmoi.sourceDir | quote }}
+
+umask = 0o022
+
+[diff]
+    exclude = ["scripts"]

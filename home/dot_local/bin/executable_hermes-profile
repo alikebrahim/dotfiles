@@ -1,0 +1,1473 @@
+#!/usr/bin/env bash
+# hermes-profile — safe interactive Hermes profile configurator
+# Keyboard UI: fzf (j/k, Ctrl-n/Ctrl-p, Space, Enter, Esc)
+# Theme default: commodore-64
+set -Eeuo pipefail
+
+PROGRAM="$(basename "$0")"
+VERSION="2.0.0"
+HERMES_HOME_ROOT="${HERMES_HOME_ROOT:-${HOME}/.hermes}"
+BACKUP_KEEP=10
+
+ASSUME_YES=false
+DRY_RUN=false
+NO_UI=false
+OUTPUT_JSON=false
+THEME="commodore-64"
+COMMAND="menu"
+COMMAND_ARG=""
+CLI_PROFILE=""
+
+SELECTED_PROFILE=""
+PROFILE_DIR=""
+CONFIG_PATH=""
+PROMPT_SIZE_JSON=""
+TXN_DIR=""
+LAST_TXN=""
+
+UI_THEME="commodore-64"
+UI_BG="#40318D"
+UI_FG="#7869C4"
+UI_ACTIVE="#AAFFEE"
+UI_METRIC="#EEEE77"
+UI_ALERT="#FF7777"
+UI_MUTED="#67B6BD"
+
+# key|group|label|description|kind|allowed values for enum; blank for free value
+# Kinds: enum, bool, int, number, string. Secret-bearing settings are excluded.
+ADVANCED_OPTS=(
+  'model.default|Model|Default model|Model identifier. Credentials must already exist.|string|'
+  'model.provider|Model|Provider|Provider used for the default model.|string|'
+  'model.base_url|Model|Base URL|Custom provider endpoint only; clear stale built-in URLs.|string|'
+  'agent.reasoning_effort|Agent|Reasoning effort|Model thinking budget.|enum|none,minimal,low,medium,high,xhigh'
+  'display.busy_input_mode|Agent|Input mode|What a message does while Hermes is working.|enum|steer,interrupt,queue'
+  'agent.tool_use_enforcement|Agent|Tool-use enforcement|Encourage required tool use.|enum|auto,true,false'
+  'agent.max_turns|Agent|Max turns|Maximum tool-call loop turns.|int|'
+  'agent.task_completion_guidance|Agent|Finish work guidance|Require a working result, not a plan only.|bool|'
+  'agent.parallel_tool_call_guidance|Agent|Parallel tool guidance|Encourage batching independent reads.|bool|'
+  'agent.environment_probe|Agent|Environment probe|Probe environment at session startup.|bool|'
+  'agent.verify_on_stop|Agent|Verify on stop|Re-check before declaring completion.|enum|auto,true,false'
+  'compression.enabled|Context|Compression enabled|Enable history compression.|bool|'
+  'compression.threshold|Context|Compression threshold|Context fraction before compression (0–1).|number|'
+  'compression.target_ratio|Context|Target ratio|Target context fraction after compression (0–1).|number|'
+  'compression.protect_last_n|Context|Protect last messages|Newest messages kept verbatim.|int|'
+  'compression.codex_gpt55_autoraise|Context|Codex auto-raise|Use the larger GPT-5.5/Codex context threshold.|bool|'
+  'compression.provider|Context|Compression provider|Provider for compression summaries.|string|'
+  'compression.model|Context|Compression model|Model for compression summaries.|string|'
+  'memory.memory_enabled|Memory|Memory enabled|Persist durable facts.|bool|'
+  'memory.user_profile_enabled|Memory|User profile enabled|Maintain durable user preferences.|bool|'
+  'memory.memory_char_limit|Memory|Memory character limit|Memory injected per session.|int|'
+  'memory.provider|Memory|Memory provider|Configured memory backend.|string|'
+  'memory.write_approval|Memory|Memory write approval|Ask before durable memory writes.|bool|'
+  'display.show_reasoning|Display|Show reasoning|Render reasoning output.|bool|'
+  'display.streaming|Display|Streaming|Render model output as it arrives.|bool|'
+  'display.show_cost|Display|Show cost|Show estimated model cost.|bool|'
+  'display.timestamps|Display|Timestamps|Prefix messages with time.|bool|'
+  'display.tool_progress|Display|Tool progress|Tool-progress visibility.|enum|off,new,all,verbose'
+  'display.compact|Display|Compact output|Use denser CLI output.|bool|'
+  'display.bell_on_complete|Display|Bell on complete|Ring terminal bell on completion.|bool|'
+  'display.skin|Display|Hermes skin|Hermes CLI skin name.|string|'
+  'approvals.mode|Security|Approval mode|Dangerous-command approval policy.|enum|manual,smart,off'
+  'approvals.destructive_slash_confirm|Security|Slash-command confirm|Confirm destructive slash commands.|bool|'
+  'approvals.mcp_reload_confirm|Security|MCP reload confirm|Confirm MCP reload operations.|bool|'
+  'security.redact_secrets|Security|Redact secrets|Mask secret-like values in output and logs.|bool|'
+  'security.allow_lazy_installs|Security|Lazy installs|Allow Hermes to install missing optional dependencies.|bool|'
+  'tool_output.max_bytes|Tool output|Maximum bytes|Cap captured tool output bytes.|int|'
+  'tool_output.max_lines|Tool output|Maximum lines|Cap captured tool output lines.|int|'
+  'delegation.max_concurrent_children|Delegation|Concurrent children|Maximum parallel subagents.|int|'
+  'delegation.max_spawn_depth|Delegation|Spawn depth|Maximum nested delegation depth.|int|'
+  'delegation.subagent_auto_approve|Delegation|Auto-approve children|Skip command approvals for child agents.|bool|'
+  'sessions.auto_prune|Sessions|Auto-prune|Automatically prune old sessions.|bool|'
+  'sessions.retention_days|Sessions|Retention days|Days to retain sessions.|int|'
+)
+
+AUX_FIELDS=(provider model base_url timeout)
+
+usage() {
+  cat <<EOF
+${PROGRAM} v${VERSION} — configure Hermes profiles before starting a session
+
+Usage:
+  ${PROGRAM}                         Select a profile, then open its dashboard
+  ${PROGRAM} --profile NAME          Open NAME's dashboard
+  ${PROGRAM} --list [--json]         List configurable profiles
+  ${PROGRAM} --prompt-size [--json]  Show effective next-session prompt size
+  ${PROGRAM} --toggle-mcp NAME       Toggle one configured MCP server
+  ${PROGRAM} --toggle-toolset NAME   Toggle one CLI toolset
+  ${PROGRAM} --apply-preset NAME     Apply a validated profile preset
+  ${PROGRAM} --save-preset NAME      Save the current profile state as a preset
+  ${PROGRAM} --edit-config           Edit selected config in \$EDITOR
+  ${PROGRAM} --undo                  Restore the newest transaction snapshot
+
+Options:
+  --profile NAME     Explicit target. "default" is ~/.hermes/config.yaml.
+  --theme NAME       commodore-64 (default), orange-gas-plasma, amber-crt, green-phosphor
+  --yes              Skip ordinary confirmation prompts
+  --dry-run          Show intended writes; never write files
+  --no-ui            Only valid with a non-menu command and --yes
+  --json             Machine-readable output for --list / --prompt-size
+  -h, --help         Show help
+  --version          Show version
+
+Notes:
+  - Config changes affect new Hermes sessions only. Start a new session or use /reset.
+  - Plugins are global Hermes state; they are intentionally not part of profile presets.
+  - This tool never edits .env or secret-bearing config fields.
+EOF
+}
+
+die() { printf '%s: %s\n' "$PROGRAM" "$*" >&2; exit 2; }
+msg() { printf '%s\n' "$*" >&2; }
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+apply_theme() {
+  case "$1" in
+    commodore-64|'')
+      UI_THEME="commodore-64"; UI_BG="#40318D"; UI_FG="#7869C4"; UI_ACTIVE="#AAFFEE"
+      UI_METRIC="#EEEE77"; UI_ALERT="#FF7777"; UI_MUTED="#67B6BD"
+      ;;
+    orange-gas-plasma)
+      UI_THEME="orange-gas-plasma"; UI_BG="#262626"; UI_FG="#FFCB83"; UI_ACTIVE="#FC531D"
+      UI_METRIC="#FFBE55"; UI_ALERT="#FF8C68"; UI_MUTED="#A98762"
+      ;;
+    amber-crt)
+      UI_THEME="amber-crt"; UI_BG="#1B1610"; UI_FG="#FFE39A"; UI_ACTIVE="#FFB000"
+      UI_METRIC="#FFD75F"; UI_ALERT="#FF875F"; UI_MUTED="#A88758"
+      ;;
+    green-phosphor)
+      UI_THEME="green-phosphor"; UI_BG="#07120B"; UI_FG="#B6F5C0"; UI_ACTIVE="#68E878"
+      UI_METRIC="#A9DF76"; UI_ALERT="#FF8C68"; UI_MUTED="#65946F"
+      ;;
+    *) die "unknown theme: $1" ;;
+  esac
+}
+
+# ---------- profile targeting ----------
+
+valid_profile_name() {
+  [[ "$1" == "default" || "$1" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]]
+}
+
+profile_dir_for() {
+  local name="$1"
+  if [[ "$name" == "default" ]]; then
+    printf '%s\n' "$HERMES_HOME_ROOT"
+  else
+    printf '%s/profiles/%s\n' "$HERMES_HOME_ROOT" "$name"
+  fi
+}
+
+profile_config_path() {
+  printf '%s/config.yaml\n' "$(profile_dir_for "$1")"
+}
+
+hermes_for_profile() {
+  local profile="$1"; shift
+  # Explicit -p is mandatory even for default. Never inherit HERMES_HOME.
+  hermes -p "$profile" "$@"
+}
+
+hermes_p() {
+  [[ -n "$SELECTED_PROFILE" ]] || die "no selected profile"
+  hermes_for_profile "$SELECTED_PROFILE" "$@"
+}
+
+canonical_config_path() {
+  hermes_for_profile "$1" config path 2>/dev/null | tail -n 1
+}
+
+verify_profile_target() {
+  local actual expected
+  actual="$(canonical_config_path "$SELECTED_PROFILE")"
+  expected="$(readlink -f "$CONFIG_PATH")"
+  [[ -n "$actual" ]] || { msg "Hermes did not return a config path for $SELECTED_PROFILE"; return 1; }
+  [[ "$(readlink -f "$actual")" == "$expected" ]] || {
+    msg "PROFILE TARGET MISMATCH: selected=$SELECTED_PROFILE expected=$expected actual=$actual"
+    return 1
+  }
+}
+
+list_profile_names() {
+  local dir name
+  if [[ -f "$HERMES_HOME_ROOT/config.yaml" ]]; then
+    printf 'default\n'
+  fi
+  if [[ -d "$HERMES_HOME_ROOT/profiles" ]]; then
+    for dir in "$HERMES_HOME_ROOT/profiles"/*/; do
+      [[ -d "$dir" ]] || continue
+      name="$(basename "$dir")"
+      valid_profile_name "$name" || continue
+      if [[ -f "${dir}config.yaml" ]]; then
+        printf '%s\n' "$name"
+      fi
+    done
+  fi
+}
+
+active_profile_name() {
+  hermes profile list 2>/dev/null | awk '
+    /^[[:space:]]*◆/ { sub(/^[[:space:]]*◆/, ""); print $1; exit }
+  '
+}
+
+load_profile() {
+  local name="$1" path
+  valid_profile_name "$name" || die "invalid profile name: $name"
+  path="$(profile_config_path "$name")"
+  [[ -f "$path" ]] || die "profile config not found: $path"
+  SELECTED_PROFILE="$name"
+  PROFILE_DIR="$(profile_dir_for "$name")"
+  CONFIG_PATH="$path"
+  verify_profile_target || die "refusing split-brain profile targeting"
+}
+
+# ---------- ANSI / fzf UI ----------
+# Do not use gum style here: lipgloss OSC 11 probes can poison fzf input.
+
+ui_have_tty() {
+  # Permission bits alone are insufficient in non-interactive runners: /dev/tty
+  # can exist yet have no controlling terminal. Probe the actual device safely.
+  [[ -c /dev/tty ]] || return 1
+  { : </dev/tty; } 2>/dev/null || return 1
+  { : >/dev/tty; } 2>/dev/null
+}
+
+ui_ansi() {
+  local hex="${1#\#}" r g b
+  [[ ${#hex} -eq 6 ]] || return 0
+  r=$((16#${hex:0:2})); g=$((16#${hex:2:2})); b=$((16#${hex:4:2}))
+  printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b"
+}
+
+ui_reset() { printf '\033[0m'; }
+
+ui_clear() {
+  ui_have_tty || return 0
+  printf '\033[2J\033[H' >/dev/tty
+}
+
+ui_width() {
+  local cols
+  if ui_have_tty; then
+    cols="$(stty size </dev/tty 2>/dev/null | awk '{print $2}')"
+  else
+    cols=80
+  fi
+  [[ "$cols" =~ ^[0-9]+$ ]] || cols=80
+  (( cols < 48 )) && cols=48
+  (( cols > 100 )) && cols=100
+  printf '%s\n' "$cols"
+}
+
+ui_height() {
+  local rows
+  if ui_have_tty; then
+    rows="$(stty size </dev/tty 2>/dev/null | awk '{print $1}')"
+  else
+    rows=24
+  fi
+  [[ "$rows" =~ ^[0-9]+$ ]] || rows=24
+  (( rows < 14 )) && rows=14
+  printf '%s\n' "$rows"
+}
+
+# One painted C64 panel: the dashboard summary and prompt-size stay inside it.
+ui_header() {
+  local title="$1" subtitle="${2:-}" width line pad tlen destination detail
+  local -a detail_lines=()
+  width="$(ui_width)"; width=$((width - 2))
+  printf -v line '%*s' "$width" ''
+  line="${line// /═}"
+  title="${title:0:width}"
+  tlen=${#title}; pad=$(((width - tlen) / 2)); (( pad < 0 )) && pad=0
+  [[ -n "$subtitle" ]] && mapfile -t detail_lines <<< "$subtitle"
+  if ui_have_tty; then destination=/dev/tty; else destination=/dev/stderr; fi
+  {
+    ui_ansi "$UI_ACTIVE"; printf '╔%s╗\n' "$line"
+    printf '║'; ui_ansi "$UI_FG"; printf '%*s%s%*s' "$pad" '' "$title" "$((width - pad - tlen))" ''
+    ui_ansi "$UI_ACTIVE"; printf '║\n'
+    if (( ${#detail_lines[@]} )); then
+      printf '╠%s╣\n' "$line"
+      for detail in "${detail_lines[@]}"; do
+        detail="${detail:0:width}"
+        printf '║'; ui_ansi "$UI_MUTED"; printf '%-*s' "$width" "$detail"; ui_ansi "$UI_ACTIVE"; printf '║\n'
+      done
+    fi
+    printf '╚%s╝\n' "$line"; ui_reset
+  } >"$destination"
+}
+
+ui_line() {
+  local destination
+  if ui_have_tty; then destination=/dev/tty; else destination=/dev/stderr; fi
+  { ui_ansi "$UI_MUTED"; printf '%s\n' "$1"; ui_reset; } >"$destination"
+}
+
+ui_metric() {
+  local destination
+  if ui_have_tty; then destination=/dev/tty; else destination=/dev/stderr; fi
+  { ui_ansi "$UI_METRIC"; printf '%s\n' "$1"; ui_reset; } >"$destination"
+}
+
+fzf_colors() {
+  printf 'bg:%s,bg+:%s,fg:%s,fg+:%s,border:%s,header:%s,prompt:%s,pointer:%s,marker:%s,info:%s,spinner:%s' \
+    "$UI_BG" "$UI_BG" "$UI_FG" "$UI_ACTIVE" "$UI_ACTIVE" "$UI_METRIC" "$UI_METRIC" "$UI_ACTIVE" "$UI_ACTIVE" "$UI_MUTED" "$UI_ACTIVE"
+}
+
+fzf_nav_binds() { printf '%s' 'j:down,k:up,ctrl-n:down,ctrl-p:up,esc:abort'; }
+
+# Full-screen single select. stdout carries only the selected item.
+ui_choose() {
+  local header="$1"; shift
+  local -a items=("$@")
+  local out rc=0
+  (( ${#items[@]} > 0 )) || return 1
+  ui_have_tty || return 1
+  out="$(
+    printf '%s\n' "${items[@]}" | FZF_DEFAULT_OPTS='' fzf \
+      --reverse --border=rounded --cycle --no-scrollbar --ansi \
+      --prompt='> ' --query='' --header="$header" --header-first \
+      --color="$(fzf_colors)" --bind="$(fzf_nav_binds)" --bind='enter:accept' \
+    || rc=$?
+  )"
+  (( rc == 0 )) || return 1
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
+}
+
+# Persistent multi-select with initial selections. Gum handles this natively:
+# j/k or Ctrl-n/Ctrl-p move, Space toggles, Enter accepts, Esc cancels.
+# NO_COLOR avoids lipgloss terminal-color probes before the next fzf screen.
+ui_choose_multi() {
+  local header="$1" selected_text="$2"; shift 2
+  local -a items=("$@") selected_args=()
+  local item out rc=0
+  (( ${#items[@]} > 0 )) || return 1
+  ui_have_tty || return 1
+  command -v gum >/dev/null 2>&1 || die 'multi-select requires gum'
+  while IFS= read -r item; do
+    if [[ -n "$item" ]]; then selected_args+=(--selected "$item"); fi
+  done <<< "$selected_text"
+  out="$(
+    NO_COLOR=1 gum choose --no-limit --ordered --show-help \
+      --header "$header" \
+      --cursor '› ' --cursor-prefix '' --selected-prefix '[x] ' --unselected-prefix '[ ] ' \
+      "${selected_args[@]}" "${items[@]}" </dev/tty
+  )" || rc=$?
+  (( rc == 0 )) || return 1
+  printf '%s\n' "$out"
+}
+
+# Text entry uses fzf's query field so Esc remains a real cancel action.
+ui_input() {
+  local header="$1" placeholder="$2" initial="${3:-}" out rc=0
+  ui_have_tty || return 1
+  out="$(
+    printf '\n' | FZF_DEFAULT_OPTS='' fzf --phony --print-query --reverse --border=rounded \
+      --prompt='> ' --query="$initial" --header="$header · Enter accepts · Esc cancels" \
+      --color="$(fzf_colors)" --bind='esc:abort,enter:accept' \
+    || rc=$?
+  )"
+  (( rc == 0 )) || return 1
+  printf '%s\n' "${out%%$'\n'*}"
+}
+
+ui_confirm() {
+  local prompt="$1" choice
+  [[ "$ASSUME_YES" == true ]] && return 0
+  if [[ "$NO_UI" == true ]]; then
+    die "--no-ui mutation requires --yes"
+  fi
+  choice="$(ui_choose "$prompt · Enter approves · Esc cancels" 'Proceed' 'Cancel')" || return 1
+  [[ "$choice" == 'Proceed' ]]
+}
+
+ui_message() {
+  if [[ "$NO_UI" == true ]] || ! ui_have_tty; then
+    msg "$*"
+    return 0
+  fi
+  ui_clear
+  ui_header "${SELECTED_PROFILE:-HERMES} · STATUS"
+  { ui_ansi "$UI_FG"; printf '\n%s\n\n' "$*"; ui_reset; } >/dev/tty
+  printf 'Press Enter to continue...' >/dev/tty
+  IFS= read -r _ </dev/tty || true
+}
+
+# ---------- argument parsing ----------
+
+parse_args() {
+  while (( $# > 0 )); do
+    case "$1" in
+      --profile) [[ $# -ge 2 ]] || die '--profile needs a name'; CLI_PROFILE="$2"; shift 2 ;;
+      --theme) [[ $# -ge 2 ]] || die '--theme needs a name'; THEME="$2"; shift 2 ;;
+      --yes) ASSUME_YES=true; shift ;;
+      --dry-run) DRY_RUN=true; shift ;;
+      --no-ui) NO_UI=true; shift ;;
+      --json) OUTPUT_JSON=true; shift ;;
+      --list) COMMAND='list'; shift ;;
+      --prompt-size) COMMAND='prompt-size'; shift ;;
+      --toggle-mcp) COMMAND='toggle-mcp'; [[ -n "${2:-}" && "${2:-}" != -* ]] || die '--toggle-mcp needs a name'; COMMAND_ARG="$2"; shift 2 ;;
+      --toggle-toolset) COMMAND='toggle-toolset'; [[ -n "${2:-}" && "${2:-}" != -* ]] || die '--toggle-toolset needs a name'; COMMAND_ARG="$2"; shift 2 ;;
+      --apply-preset) COMMAND='apply-preset'; [[ -n "${2:-}" && "${2:-}" != -* ]] || die '--apply-preset needs a name'; COMMAND_ARG="$2"; shift 2 ;;
+      --save-preset) COMMAND='save-preset'; [[ -n "${2:-}" && "${2:-}" != -* ]] || die '--save-preset needs a name'; COMMAND_ARG="$2"; shift 2 ;;
+      --edit-config) COMMAND='edit-config'; shift ;;
+      --undo) COMMAND='undo'; shift ;;
+      --version) printf '%s %s\n' "$PROGRAM" "$VERSION"; exit 0 ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "unknown argument: $1" ;;
+    esac
+  done
+}
+
+# ---------- reads / validation ----------
+
+yq_get() {
+  local value
+  value="$(yq -r "$2" "$1" 2>/dev/null)" || return 0
+  # Mike yq's `//` treats false as empty. Do not use it for scalar reads.
+  [[ "$value" == null ]] && return 0
+  printf '%s\n' "$value"
+}
+
+config_get() { yq_get "$CONFIG_PATH" ".$1"; }
+
+config_check() {
+  verify_profile_target || return 1
+  hermes_p config check >/dev/null 2>&1
+}
+
+profile_model_line() {
+  local profile="$1" path model provider
+  path="$(profile_config_path "$profile")"
+  model="$(yq_get "$path" '.model.default')"
+  provider="$(yq_get "$path" '.model.provider')"
+  if [[ -n "$model" && -n "$provider" ]]; then printf '%s (%s)\n' "$model" "$provider"
+  elif [[ -n "$model" ]]; then printf '%s\n' "$model"
+  else printf '—\n'; fi
+}
+
+profile_mcp_counts() {
+  local path="$1" total enabled
+  path="$(profile_config_path "$path")"
+  total="$(yq -r '.mcp_servers // {} | length' "$path" 2>/dev/null || printf 0)"
+  enabled="$(yq -r '[.mcp_servers // {} | to_entries[] | select(.value.enabled != false)] | length' "$path" 2>/dev/null || printf 0)"
+  printf '%s %s\n' "$enabled" "$total"
+}
+
+refresh_prompt_size() {
+  local out
+  if out="$(hermes_p prompt-size --json 2>/dev/null)"; then
+    PROMPT_SIZE_JSON="$out"
+    return 0
+  fi
+  PROMPT_SIZE_JSON=""
+  return 1
+}
+
+format_prompt_size() {
+  [[ -n "$PROMPT_SIZE_JSON" ]] || { printf 'Prompt size unavailable.\n'; return 0; }
+  python3 - "$PROMPT_SIZE_JSON" <<'PY'
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    print('Prompt size unavailable.')
+    raise SystemExit(0)
+sp = d.get('system_prompt', {})
+tools = d.get('tools', {})
+skills = d.get('skills_index', {})
+mem = d.get('memory', {})
+prof = d.get('user_profile', {})
+sp_b = int(sp.get('bytes') or 0)
+tools_b = int(tools.get('json_bytes') or 0)
+print(f"System: {sp_b/1024:.1f} KB   Skills: {int(skills.get('bytes') or 0)/1024:.1f} KB   Memory: {int(mem.get('bytes') or 0)/1024:.1f} KB")
+print(f"Profile: {int(prof.get('bytes') or 0)/1024:.1f} KB   Tool schemas: {tools_b/1024:.1f} KB ({int(tools.get('count') or 0)} tools)")
+print(f"Total fixed ≈ {(sp_b + tools_b)/1024:.1f} KB")
+PY
+}
+
+validate_value() {
+  local kind="$1" value="$2" allowed="${3:-}" item
+  case "$kind" in
+    bool) [[ "$value" == true || "$value" == false ]] ;;
+    int) [[ "$value" =~ ^[0-9]+$ ]] ;;
+    number) [[ "$value" =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?$ ]] ;;
+    string) [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] ;;
+    enum)
+      IFS=',' read -r -a _allowed <<< "$allowed"
+      for item in "${_allowed[@]}"; do [[ "$value" == "$item" ]] && return 0; done
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+config_matches() {
+  local key="$1" expected="$2" kind="$3" got
+  got="$(config_get "$key")"
+  case "$kind" in
+    number)
+      python3 - "$got" "$expected" <<'PY'
+import sys
+try:
+    raise SystemExit(0 if float(sys.argv[1]) == float(sys.argv[2]) else 1)
+except ValueError:
+    raise SystemExit(1)
+PY
+      ;;
+    *) [[ "$got" == "$expected" ]] ;;
+  esac
+}
+
+# Official CLI only: it handles types, atomic YAML write, env-template preservation,
+# and managed-scope enforcement. Never bypass it with a raw write.
+config_set_no_txn() {
+  local key="$1" value="$2" kind="$3" allowed="${4:-}" out
+  validate_value "$kind" "$value" "$allowed" || { msg "invalid ${kind} value for $key"; return 1; }
+  if [[ "$DRY_RUN" == true ]]; then
+    msg "[dry-run] ${SELECTED_PROFILE}: config set ${key}=${value}"
+    return 0
+  fi
+  if ! out="$(hermes_p config set "$key" "$value" 2>&1)"; then
+    msg "config set failed for $key: $out"
+    return 1
+  fi
+  config_matches "$key" "$value" "$kind" || { msg "post-write mismatch for $key"; return 1; }
+}
+
+# ---------- transaction snapshots ----------
+
+backup_root() { printf '%s/.hermes-profile-backups\n' "$PROFILE_DIR"; }
+
+prune_transactions() {
+  local root="$1" i
+  local -a dirs=()
+  mapfile -t dirs < <(find "$root" -mindepth 1 -maxdepth 1 -type d -name 'txn-*' -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk '{print $2}')
+  for ((i=BACKUP_KEEP; i<${#dirs[@]}; i++)); do rm -rf -- "${dirs[$i]}"; done
+}
+
+txn_begin() {
+  local label="$1" root
+  TXN_DIR=""
+  if [[ "$DRY_RUN" == true ]]; then
+    msg "[dry-run] transaction: $label"
+    return 0
+  fi
+  verify_profile_target || return 1
+  root="$(backup_root)"
+  mkdir -p "$root"
+  TXN_DIR="$(mktemp -d "$root/txn-$(date +%Y%m%dT%H%M%S)-XXXXXX")"
+  cp -a "$CONFIG_PATH" "$TXN_DIR/config.yaml"
+  printf 'label=%s\nprofile=%s\ncreated=%s\n' "$label" "$SELECTED_PROFILE" "$(date -Is)" > "$TXN_DIR/meta.txt"
+}
+
+txn_rollback() {
+  [[ "$DRY_RUN" == true ]] && return 0
+  [[ -n "$TXN_DIR" && -f "$TXN_DIR/config.yaml" ]] || return 1
+  cp -a "$TXN_DIR/config.yaml" "$CONFIG_PATH"
+  printf 'rolled_back=%s\n' "$(date -Is)" >> "$TXN_DIR/meta.txt"
+  config_check || { msg "rollback copied config but Hermes cannot validate it"; return 1; }
+  msg "Rolled back transaction: $TXN_DIR"
+}
+
+txn_commit() {
+  [[ "$DRY_RUN" == true ]] && return 0
+  config_check || { msg 'config validation failed; rolling back'; txn_rollback; return 1; }
+  [[ -n "$TXN_DIR" ]] && { printf 'committed=%s\n' "$(date -Is)" >> "$TXN_DIR/meta.txt"; LAST_TXN="$TXN_DIR"; prune_transactions "$(backup_root)"; }
+}
+
+with_config_change() {
+  local label="$1" key="$2" value="$3" kind="$4" allowed="${5:-}"
+  txn_begin "$label" || return 1
+  if ! config_set_no_txn "$key" "$value" "$kind" "$allowed"; then txn_rollback || true; return 1; fi
+  txn_commit
+}
+
+cmd_undo() {
+  local root latest current
+  root="$(backup_root)"
+  [[ -d "$root" ]] || die "no transaction snapshots for $SELECTED_PROFILE"
+  latest="$(find "$root" -mindepth 1 -maxdepth 1 -type d -name 'txn-*' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | awk '{print $2}')"
+  [[ -n "$latest" && -f "$latest/config.yaml" ]] || die "no transaction snapshot found"
+  ui_confirm "Restore transaction snapshot $(basename "$latest")?" || return 0
+  if [[ "$DRY_RUN" == true ]]; then msg "[dry-run] restore $latest/config.yaml"; return 0; fi
+  # Snapshot the current state first; mktemp prevents collision with the chosen backup.
+  txn_begin "pre-undo $(basename "$latest")" || return 1
+  current="$TXN_DIR"
+  cp -a "$latest/config.yaml" "$CONFIG_PATH"
+  if config_check; then
+    printf 'undo_of=%s\n' "$latest" >> "$current/meta.txt"
+    txn_commit
+    ui_message "Undo restored $(basename "$latest"). New pre-undo snapshot: $(basename "$current")"
+  else
+    cp -a "$current/config.yaml" "$CONFIG_PATH"
+    config_check || true
+    die "restored snapshot failed validation; returned to current state"
+  fi
+}
+
+# ---------- capability state ----------
+
+mcp_names() { yq -r '.mcp_servers // {} | keys | .[]' "$CONFIG_PATH" 2>/dev/null || true; }
+
+mcp_enabled() {
+  local name="$1" value
+  value="$(yq -r ".mcp_servers.\"${name}\".enabled" "$CONFIG_PATH" 2>/dev/null)"
+  # Missing enabled means enabled by Hermes convention; false must remain false.
+  [[ -z "$value" || "$value" == null ]] && value=true
+  [[ "$value" == true || "$value" == True || "$value" == 1 ]]
+}
+
+require_mcp_name() {
+  local wanted="$1" name
+  while IFS= read -r name; do [[ "$name" == "$wanted" ]] && return 0; done < <(mcp_names)
+  die "unknown MCP server for $SELECTED_PROFILE: $wanted"
+}
+
+toolsets_available() {
+  hermes_p tools list 2>/dev/null | awk '
+    /enabled|disabled/ {
+      for (i=1; i<=NF; i++) if ($i == "enabled" || $i == "disabled") { print $(i+1); break }
+    }' | sed '/^$/d' | sort -u
+}
+
+toolsets_enabled() {
+  hermes_p tools list 2>/dev/null | awk '
+    /✓ enabled/ { for (i=1; i<=NF; i++) if ($i == "enabled") { print $(i+1); break } }' | sed '/^$/d' | sort -u
+}
+
+require_toolset_name() {
+  local wanted="$1" name
+  while IFS= read -r name; do [[ "$name" == "$wanted" ]] && return 0; done < <(toolsets_available)
+  die "unknown CLI toolset for $SELECTED_PROFILE: $wanted"
+}
+
+skills_disabled() {
+  local raw
+  raw="$(config_get 'skills.disabled')"
+  [[ -z "$raw" || "$raw" == null ]] && return 0
+  tr ',' '\n' <<< "$raw" | sed '/^$/d' | sort -u
+}
+
+skills_all_names() {
+  local root skill
+  for root in "$PROFILE_DIR/skills" "$HERMES_HOME_ROOT/skills"; do
+    [[ -d "$root" ]] || continue
+    while IFS= read -r skill; do
+      awk '
+        NR == 1 && $0 == "---" { in_front=1; next }
+        in_front && $0 == "---" { exit }
+        in_front && /^name:[[:space:]]*/ {
+          sub(/^name:[[:space:]]*/, "")
+          gsub(/^['\"']|['\"']$/, "")
+          print
+          exit
+        }' "$skill"
+    done < <(find "$root" -type f -name SKILL.md 2>/dev/null)
+  done | sed '/^$/d' | sort -u
+}
+
+plugin_rows() { hermes plugins list --plain 2>/dev/null || true; }
+
+plugin_enabled() {
+  local name="$1"
+  plugin_rows | awk -v n="$name" '$NF == n { print ($1 == "enabled" ? "true" : "false"); exit }' | grep -qx true
+}
+
+# ---------- capability windows ----------
+
+window_mcp() {
+  local -a names=() selected=() wanted=() diffs=()
+  local name out
+  mapfile -t names < <(mcp_names)
+  (( ${#names[@]} )) || { ui_message 'No MCP servers are configured.'; return 0; }
+  for name in "${names[@]}"; do
+    if mcp_enabled "$name"; then
+      selected+=("$name")
+    fi
+  done
+  out="$(ui_choose_multi 'MCP servers · Space toggle · Enter applies · Esc cancels' "$(printf '%s\n' "${selected[@]}")" "${names[@]}")" || return 0
+  mapfile -t wanted <<< "$out"
+  local -A want=()
+  for name in "${wanted[@]}"; do
+    if [[ -n "$name" ]]; then want["$name"]=1; fi
+  done
+  for name in "${names[@]}"; do
+    if mcp_enabled "$name"; then
+      if [[ -z "${want[$name]:-}" ]]; then diffs+=("$name: on → off"); fi
+    else
+      if [[ -n "${want[$name]:-}" ]]; then diffs+=("$name: off → on"); fi
+    fi
+  done
+  (( ${#diffs[@]} )) || { ui_message 'No MCP changes.'; return 0; }
+  ui_clear; ui_header "$SELECTED_PROFILE · MCP DIFF" 'Exact server enablement set'
+  for name in "${diffs[@]}"; do ui_line "$name"; done
+  ui_confirm 'Apply MCP server changes? New session or /reset required.' || return 0
+  txn_begin 'MCP enablement' || return 1
+  for name in "${names[@]}"; do
+    if [[ -n "${want[$name]:-}" ]]; then
+      if ! mcp_enabled "$name"; then
+        config_set_no_txn "mcp_servers.${name}.enabled" true bool
+      fi
+    else
+      if mcp_enabled "$name"; then
+        config_set_no_txn "mcp_servers.${name}.enabled" false bool
+      fi
+    fi
+  done || { txn_rollback || true; return 1; }
+  if [[ "$DRY_RUN" == true ]]; then
+    txn_commit
+    ui_message 'Dry-run complete: no MCP servers were changed.'
+    return 0
+  fi
+  for name in "${names[@]}"; do
+    if [[ -n "${want[$name]:-}" ]]; then
+      if ! mcp_enabled "$name"; then txn_rollback || true; die "MCP verification failed: $name"; fi
+    else
+      if mcp_enabled "$name"; then txn_rollback || true; die "MCP verification failed: $name"; fi
+    fi
+  done
+  txn_commit || return 1
+  ui_message "MCP updates committed. New session or /reset required."
+}
+
+apply_toolset_set_no_txn() {
+  local selected_text="$1" ts
+  local -a all=() current=() wanted=() enable=() disable=()
+  mapfile -t all < <(toolsets_available)
+  mapfile -t current < <(toolsets_enabled)
+  while IFS= read -r ts; do
+    if [[ -n "$ts" ]]; then wanted+=("$ts"); fi
+  done <<< "$selected_text"
+  local -A cur=() want=()
+  for ts in "${current[@]}"; do cur["$ts"]=1; done
+  for ts in "${wanted[@]}"; do want["$ts"]=1; done
+  for ts in "${all[@]}"; do
+    if [[ -n "${want[$ts]:-}" && -z "${cur[$ts]:-}" ]]; then enable+=("$ts"); fi
+    if [[ -z "${want[$ts]:-}" && -n "${cur[$ts]:-}" ]]; then disable+=("$ts"); fi
+  done
+  if [[ "$DRY_RUN" == true ]]; then
+    msg "[dry-run] toolsets enable: ${enable[*]:-(none)}"
+    msg "[dry-run] toolsets disable: ${disable[*]:-(none)}"
+    return 0
+  fi
+  if (( ${#enable[@]} )); then
+    hermes_p tools enable --platform cli "${enable[@]}"
+  fi
+  if (( ${#disable[@]} )); then
+    hermes_p tools disable --platform cli "${disable[@]}"
+  fi
+  return 0
+}
+
+verify_toolset_set() {
+  local selected_text="$1" ts
+  local -a all=() current=() wanted=()
+  mapfile -t all < <(toolsets_available)
+  mapfile -t current < <(toolsets_enabled)
+  while IFS= read -r ts; do
+    if [[ -n "$ts" ]]; then wanted+=("$ts"); fi
+  done <<< "$selected_text"
+  local -A cur=() want=()
+  for ts in "${current[@]}"; do cur["$ts"]=1; done
+  for ts in "${wanted[@]}"; do want["$ts"]=1; done
+  for ts in "${all[@]}"; do
+    if [[ -n "${cur[$ts]:-}" && -z "${want[$ts]:-}" ]] || [[ -z "${cur[$ts]:-}" && -n "${want[$ts]:-}" ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+window_toolsets() {
+  local -a all=() enabled=() diffs=()
+  local ts out
+  mapfile -t all < <(toolsets_available)
+  mapfile -t enabled < <(toolsets_enabled)
+  (( ${#all[@]} )) || { ui_message 'No CLI toolsets discovered.'; return 0; }
+  out="$(ui_choose_multi 'CLI toolsets · Space toggle · Enter applies · Esc cancels' "$(printf '%s\n' "${enabled[@]}")" "${all[@]}")" || return 0
+  local -A old=() new=()
+  for ts in "${enabled[@]}"; do old["$ts"]=1; done
+  while IFS= read -r ts; do
+    if [[ -n "$ts" ]]; then new["$ts"]=1; fi
+  done <<< "$out"
+  for ts in "${all[@]}"; do
+    if [[ -n "${new[$ts]:-}" && -z "${old[$ts]:-}" ]]; then diffs+=("$ts: off → on"); fi
+    if [[ -z "${new[$ts]:-}" && -n "${old[$ts]:-}" ]]; then diffs+=("$ts: on → off"); fi
+  done
+  (( ${#diffs[@]} )) || { ui_message 'No toolset changes.'; return 0; }
+  ui_clear; ui_header "$SELECTED_PROFILE · TOOLSET DIFF" 'CLI platform only'
+  for ts in "${diffs[@]}"; do ui_line "$ts"; done
+  ui_confirm 'Apply CLI toolset changes? New session or /reset required.' || return 0
+  txn_begin 'CLI toolsets' || return 1
+  apply_toolset_set_no_txn "$out" || { txn_rollback || true; return 1; }
+  if [[ "$DRY_RUN" == true ]]; then
+    txn_commit
+    ui_message 'Dry-run complete: no toolsets were changed.'
+    return 0
+  fi
+  verify_toolset_set "$out" || { txn_rollback || true; die 'toolset verification failed'; }
+  txn_commit || return 1
+  ui_message 'Toolset updates committed. New session or /reset required.'
+}
+
+window_skills() {
+  local -a all=() disabled=() wanted=()
+  local skill out joined
+  mapfile -t all < <(skills_all_names)
+  mapfile -t disabled < <(skills_disabled)
+  (( ${#all[@]} )) || { ui_message 'No SKILL.md identities discovered.'; return 0; }
+  out="$(ui_choose_multi 'Skills · Space toggle · Enter writes disabled set · Esc cancels' "$(comm -23 <(printf '%s\n' "${all[@]}") <(printf '%s\n' "${disabled[@]}") | sort -u)" "${all[@]}")" || return 0
+  while IFS= read -r skill; do
+    if [[ -n "$skill" ]]; then wanted+=("$skill"); fi
+  done <<< "$out"
+  local -A enabled=() dis=()
+  for skill in "${wanted[@]}"; do enabled["$skill"]=1; done
+  for skill in "${all[@]}"; do
+    if [[ -z "${enabled[$skill]:-}" ]]; then dis["$skill"]=1; fi
+  done
+  joined="$(printf '%s\n' "${!dis[@]}" | sort | paste -sd, -)"
+  [[ "$(printf '%s\n' "${disabled[@]}" | sort | paste -sd, -)" != "$joined" ]] || { ui_message 'No skills change.'; return 0; }
+  ui_clear; ui_header "$SELECTED_PROFILE · SKILLS DIFF" 'skills.disabled uses a comma string'
+  ui_line "Disabled: ${joined:-(none)}"
+  ui_confirm 'Write skills.disabled? New session or /reset required.' || return 0
+  with_config_change 'skills disabled set' 'skills.disabled' "$joined" string || return 1
+  ui_message 'Skills update committed. New session or /reset required.'
+}
+
+window_plugins() {
+  local -a rows=() menu=()
+  local row name action url typed
+  mapfile -t rows < <(plugin_rows)
+  ui_clear; ui_header 'GLOBAL · PLUGINS' 'Global Hermes registry — never included in profile presets'
+  (( ${#rows[@]} )) || { ui_message 'No plugins listed.'; return 0; }
+  menu=("${rows[@]}" 'Install from Git URL' 'Back')
+  row="$(ui_choose 'Select global plugin' "${menu[@]}")" || return 0
+  [[ "$row" == Back ]] && return 0
+  if [[ "$row" == 'Install from Git URL' ]]; then
+    url="$(ui_input 'Plugin Git URL or owner/repo' 'owner/repo' '')" || return 0
+    [[ -n "$url" ]] || return 0
+    ui_confirm "Install global plugin '$url'?" || return 0
+    [[ "$DRY_RUN" == true ]] && { msg "[dry-run] hermes plugins install $url"; return 0; }
+    hermes plugins install "$url"
+    ui_message "Plugin install command completed. Review GLOBAL · PLUGINS before enabling it."
+    return 0
+  fi
+  name="$(awk '{print $NF}' <<< "$row")"
+  action="$(ui_choose "Global plugin: $name" Enable Disable Update Remove Back)" || return 0
+  [[ "$action" == Back ]] && return 0
+  if [[ "$action" == Remove ]]; then
+    typed="$(ui_input "Type exact plugin name to remove: $name" "$name" '')" || return 0
+    [[ "$typed" == "$name" ]] || { ui_message 'Plugin removal cancelled: name mismatch.'; return 0; }
+  fi
+  ui_confirm "$action global plugin '$name'?" || return 0
+  if [[ "$DRY_RUN" == true ]]; then msg "[dry-run] hermes plugins ${action,,} $name"; return 0; fi
+  case "$action" in
+    Enable) hermes plugins enable "$name" --no-allow-tool-override || hermes plugins enable "$name" ;;
+    Disable) hermes plugins disable "$name" ;;
+    Update) hermes plugins update "$name" ;;
+    Remove) hermes plugins remove "$name" ;;
+  esac
+  if [[ "$action" == Enable ]] && ! plugin_enabled "$name"; then die "plugin enable verification failed: $name"; fi
+  if [[ "$action" == Disable ]] && plugin_enabled "$name"; then die "plugin disable verification failed: $name"; fi
+  ui_message "Global plugin action completed: $action $name. New Hermes session required."
+}
+
+aux_tasks() { yq -r '.auxiliary // {} | keys | .[]' "$CONFIG_PATH" 2>/dev/null || true; }
+
+window_auxiliary() {
+  local -a tasks=() labels=() fields=()
+  local task label field current value kind
+  mapfile -t tasks < <(aux_tasks)
+  (( ${#tasks[@]} )) || { ui_message 'No auxiliary tasks configured.'; return 0; }
+  while true; do
+    labels=()
+    for task in "${tasks[@]}"; do
+      labels+=("$task  provider=$(config_get "auxiliary.${task}.provider")  model=$(config_get "auxiliary.${task}.model")")
+    done
+    labels+=(Back)
+    ui_clear; ui_header "$SELECTED_PROFILE · AUXILIARY MODELS" 'No API-key fields are exposed'
+    label="$(ui_choose 'Select auxiliary task' "${labels[@]}")" || return 0
+    [[ "$label" == Back ]] && return 0
+    task="${label%%  provider=*}"
+    fields=()
+    for field in "${AUX_FIELDS[@]}"; do fields+=("$field"); done
+    fields+=(Back)
+    field="$(ui_choose "Auxiliary task: $task" "${fields[@]}")" || continue
+    [[ "$field" == Back ]] && continue
+    current="$(config_get "auxiliary.${task}.${field}")"
+    if [[ "$field" == timeout ]]; then kind=int; else kind=string; fi
+    value="$(ui_input "auxiliary.${task}.${field}" 'value' "$current")" || continue
+    validate_value "$kind" "$value" || { ui_message "Invalid $kind value."; continue; }
+    ui_confirm "Set auxiliary.${task}.${field} = ${value:-<empty>}?" || continue
+    with_config_change "auxiliary ${task}.${field}" "auxiliary.${task}.${field}" "$value" "$kind" || continue
+    ui_message 'Auxiliary configuration committed. New session or /reset required.'
+  done
+}
+
+advanced_opt_for_key() {
+  local wanted="$1" opt key
+  for opt in "${ADVANCED_OPTS[@]}"; do
+    IFS='|' read -r key _ <<< "$opt"
+    [[ "$key" == "$wanted" ]] && { printf '%s\n' "$opt"; return 0; }
+  done
+  return 1
+}
+
+window_advanced() {
+  local -a groups=() labels=() keys=() choices=()
+  local opt key group label desc kind allowed selected current value i
+  for opt in "${ADVANCED_OPTS[@]}"; do IFS='|' read -r key group _ <<< "$opt"; groups+=("$group"); done
+  mapfile -t groups < <(printf '%s\n' "${groups[@]}" | sort -u)
+  while true; do
+    ui_clear; ui_header "$SELECTED_PROFILE · ADVANCED CONFIGURATION" 'Curated non-secret Hermes controls'
+    group="$(ui_choose 'Choose configuration group' "${groups[@]}" Back)" || return 0
+    [[ "$group" == Back ]] && return 0
+    labels=(); keys=()
+    for opt in "${ADVANCED_OPTS[@]}"; do
+      IFS='|' read -r key _g label desc kind allowed <<< "$opt"
+      [[ "$_g" == "$group" ]] || continue
+      current="$(config_get "$key")"
+      labels+=("$label = ${current:-<empty>}  [$key]")
+      keys+=("$key")
+    done
+    labels+=(Back)
+    selected="$(ui_choose "$group settings" "${labels[@]}")" || continue
+    [[ "$selected" == Back ]] && continue
+    key=""
+    for i in "${!labels[@]}"; do [[ "${labels[$i]}" == "$selected" ]] && { key="${keys[$i]}"; break; }; done
+    [[ -n "$key" ]] || continue
+    opt="$(advanced_opt_for_key "$key")" || continue
+    IFS='|' read -r _ group label desc kind allowed <<< "$opt"
+    current="$(config_get "$key")"
+    if [[ "$kind" == enum || "$kind" == bool ]]; then
+      if [[ "$kind" == bool ]]; then choices=(true false); else IFS=',' read -r -a choices <<< "$allowed"; fi
+      value="$(ui_choose "$label · current=${current:-<empty>}" "${choices[@]}" Back)" || continue
+      [[ "$value" == Back ]] && continue
+    else
+      value="$(ui_input "$label" 'value' "$current")" || continue
+    fi
+    validate_value "$kind" "$value" "$allowed" || { ui_message "Invalid value for $key."; continue; }
+    ui_clear; ui_header 'ADVANCED CONFIG DIFF' "$SELECTED_PROFILE"
+    ui_line "$key: ${current:-<empty>} → ${value:-<empty>}"
+    ui_line "$desc"
+    ui_confirm 'Apply this configuration change? New session or /reset required.' || continue
+    with_config_change "advanced $key" "$key" "$value" "$kind" "$allowed" || continue
+    ui_message 'Advanced configuration committed. New session or /reset required.'
+  done
+}
+
+# ---------- presets ----------
+
+valid_preset_name() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ && "$1" != *..* ]]; }
+
+presets_dir() { printf '%s/presets\n' "$PROFILE_DIR"; }
+preset_path() { printf '%s/%s.yaml\n' "$(presets_dir)" "$1"; }
+
+advanced_keys_file() {
+  local opt key
+  for opt in "${ADVANCED_OPTS[@]}"; do IFS='|' read -r key _ <<< "$opt"; printf '%s\n' "$key"; done
+}
+
+save_preset() {
+  local name="$1" description="${2:-}" path tmpdir generated
+  valid_preset_name "$name" || die "invalid preset name: $name"
+  path="$(preset_path "$name")"
+  if [[ -f "$path" ]]; then
+    ui_confirm "Overwrite preset '$name'?" || return 0
+  else
+    ui_confirm "Save current $SELECTED_PROFILE state as preset '$name'?" || return 0
+  fi
+  [[ "$DRY_RUN" == true ]] && { msg "[dry-run] save preset $path"; return 0; }
+  tmpdir="$(mktemp -d)"
+  toolsets_enabled > "$tmpdir/toolsets"
+  while IFS= read -r _n; do
+    if mcp_enabled "$_n"; then
+      printf '%s\n' "$_n"
+    fi
+  done < <(mcp_names) > "$tmpdir/mcp"
+  skills_disabled > "$tmpdir/skills"
+  aux_tasks > "$tmpdir/aux-tasks"
+  advanced_keys_file > "$tmpdir/advanced-keys"
+  generated="$tmpdir/preset.yaml"
+  python3 - "$CONFIG_PATH" "$tmpdir" "$generated" "$name" "$description" "$SELECTED_PROFILE" <<'PY'
+import datetime
+import sys
+from pathlib import Path
+import yaml
+
+cfg_path = Path(sys.argv[1]); work = Path(sys.argv[2]); out = Path(sys.argv[3])
+name, desc, profile = sys.argv[4:7]
+cfg = yaml.safe_load(cfg_path.read_text()) or {}
+def lines(name):
+    p = work / name
+    return [x.strip() for x in p.read_text().splitlines() if x.strip()] if p.exists() else []
+def get_path(data, dotted):
+    cur = data
+    for part in dotted.split('.'):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+advanced = {}
+for key in lines('advanced-keys'):
+    value = get_path(cfg, key)
+    if value is not None and isinstance(value, (str, int, float, bool)):
+        advanced[key] = value
+aux = {}
+for task in lines('aux-tasks'):
+    block = get_path(cfg, 'auxiliary.' + task)
+    if isinstance(block, dict):
+        kept = {k: block[k] for k in ('provider', 'model', 'base_url', 'timeout') if k in block}
+        if kept:
+            aux[task] = kept
+data = {
+    'schema': 2,
+    'name': name,
+    'description': desc,
+    'profile': profile,
+    'created': datetime.date.today().isoformat(),
+    'toolsets_cli': lines('toolsets'),
+    'mcp_enabled': lines('mcp'),
+    'skills_disabled': lines('skills'),
+    'auxiliary': aux,
+    'advanced': advanced,
+}
+out.write_text(yaml.safe_dump(data, sort_keys=False))
+PY
+  mkdir -p "$(presets_dir)"
+  mv "$generated" "$path"
+  rm -rf "$tmpdir"
+  ui_message "Saved preset: $path"
+}
+
+# Strictly validate a schema-2 preset and write a simple, Bash-safe apply plan.
+preset_to_plan() {
+  local path="$1" plan="$2" keys="$3"
+  python3 - "$path" "$plan" "$keys" <<'PY'
+import json, sys
+from pathlib import Path
+import yaml
+
+path, plan, keys_file = map(Path, sys.argv[1:4])
+try:
+    raw = yaml.safe_load(path.read_text())
+except Exception as e:
+    raise SystemExit(f'Cannot parse preset: {e}')
+if not isinstance(raw, dict) or raw.get('schema') != 2:
+    raise SystemExit('Preset must be a schema: 2 mapping')
+allowed = {x.strip() for x in keys_file.read_text().splitlines() if x.strip()}
+def str_list(key):
+    val = raw.get(key, [])
+    if not isinstance(val, list) or not all(isinstance(x, str) and x and '\n' not in x and '\t' not in x for x in val):
+        raise SystemExit(f'{key} must be a list of non-empty strings')
+    return val
+advanced = raw.get('advanced', {})
+if not isinstance(advanced, dict) or not set(advanced).issubset(allowed):
+    raise SystemExit('advanced contains unsupported configuration keys')
+for k, v in advanced.items():
+    if not isinstance(v, (str, int, float, bool)) or isinstance(v, str) and ('\n' in v or '\t' in v):
+        raise SystemExit(f'advanced.{k} must be a scalar without tabs/newlines')
+aux = raw.get('auxiliary', {})
+if not isinstance(aux, dict):
+    raise SystemExit('auxiliary must be a mapping')
+for task, fields in aux.items():
+    if not isinstance(task, str) or not isinstance(fields, dict):
+        raise SystemExit('auxiliary task data is invalid')
+    if not set(fields).issubset({'provider','model','base_url','timeout'}):
+        raise SystemExit(f'auxiliary.{task} has unsupported fields')
+    for field, value in fields.items():
+        if not isinstance(value, (str, int, float, bool)) or isinstance(value, str) and ('\n' in value or '\t' in value):
+            raise SystemExit(f'auxiliary.{task}.{field} must be a scalar')
+with plan.open('w') as f:
+    for item in str_list('mcp_enabled'): f.write('MCP\t' + item + '\n')
+    for item in str_list('toolsets_cli'): f.write('TOOLSET\t' + item + '\n')
+    for item in str_list('skills_disabled'): f.write('SKILL\t' + item + '\n')
+    for key, value in advanced.items(): f.write('ADV\t%s\t%s\n' % (key, json.dumps(value)))
+    for task, fields in aux.items():
+        for field, value in fields.items(): f.write('AUX\t%s\t%s\t%s\n' % (task, field, json.dumps(value)))
+PY
+}
+
+json_scalar_to_text() {
+  python3 - "$1" <<'PY'
+import json, sys
+v = json.loads(sys.argv[1])
+if isinstance(v, bool): print('true' if v else 'false')
+else: print(v)
+PY
+}
+
+advanced_kind() {
+  local key="$1" opt kind allowed
+  opt="$(advanced_opt_for_key "$key")" || return 1
+  IFS='|' read -r _ _ _ _ kind allowed <<< "$opt"
+  printf '%s|%s\n' "$kind" "$allowed"
+}
+
+verify_plan_names() {
+  local plan="$1" type value task field line
+  local -A mcp=() tools=() skills=() aux=()
+  while IFS= read -r value; do
+    if [[ -n "$value" ]]; then mcp["$value"]=1; fi
+  done < <(mcp_names)
+  while IFS= read -r value; do
+    if [[ -n "$value" ]]; then tools["$value"]=1; fi
+  done < <(toolsets_available)
+  while IFS= read -r value; do
+    if [[ -n "$value" ]]; then skills["$value"]=1; fi
+  done < <(skills_all_names)
+  while IFS= read -r value; do
+    if [[ -n "$value" ]]; then aux["$value"]=1; fi
+  done < <(aux_tasks)
+  while IFS=$'\t' read -r type value task field; do
+    case "$type" in
+      MCP) [[ -n "${mcp[$value]:-}" ]] || { msg "preset references unknown MCP: $value"; return 1; } ;;
+      TOOLSET) [[ -n "${tools[$value]:-}" ]] || { msg "preset references unknown toolset: $value"; return 1; } ;;
+      SKILL) [[ -n "${skills[$value]:-}" ]] || { msg "preset references unknown skill: $value"; return 1; } ;;
+      AUX) [[ -n "${aux[$value]:-}" ]] || { msg "preset references unknown auxiliary task: $value"; return 1; } ;;
+    esac
+  done < "$plan"
+  return 0
+}
+
+plan_lists() {
+  local plan="$1" kind="$2"
+  awk -F '\t' -v k="$kind" '$1 == k { print $2 }' "$plan" | sort -u
+}
+
+preset_diff_lines() {
+  local plan="$1" key json value current kind task field
+  local -A wanted_mcp=()
+  while IFS= read -r key; do
+    if [[ -n "$key" ]]; then wanted_mcp["$key"]=1; fi
+  done < <(plan_lists "$plan" MCP)
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    if [[ -n "${wanted_mcp[$key]:-}" ]]; then
+      if ! mcp_enabled "$key"; then printf 'MCP %s: off → on\n' "$key"; fi
+    else
+      if mcp_enabled "$key"; then printf 'MCP %s: on → off\n' "$key"; fi
+    fi
+  done < <(mcp_names)
+
+  current="$(toolsets_enabled | paste -sd, -)"
+  value="$(plan_lists "$plan" TOOLSET | paste -sd, -)"
+  [[ "$current" == "$value" ]] || printf 'CLI toolsets: %s → %s\n' "${current:-(none)}" "${value:-(none)}"
+  current="$(skills_disabled | paste -sd, -)"
+  value="$(plan_lists "$plan" SKILL | paste -sd, -)"
+  [[ "$current" == "$value" ]] || printf 'skills.disabled: %s → %s\n' "${current:-(none)}" "${value:-(none)}"
+
+  while IFS=$'\t' read -r kind key json; do
+    [[ "$kind" == ADV ]] || continue
+    value="$(json_scalar_to_text "$json")"; current="$(config_get "$key")"
+    [[ "$current" == "$value" ]] || printf '%s: %s → %s\n' "$key" "${current:-<empty>}" "${value:-<empty>}"
+  done < "$plan"
+  while IFS=$'\t' read -r kind task field json; do
+    [[ "$kind" == AUX ]] || continue
+    value="$(json_scalar_to_text "$json")"; current="$(config_get "auxiliary.${task}.${field}")"
+    [[ "$current" == "$value" ]] || printf 'auxiliary.%s.%s: %s → %s\n' "$task" "$field" "${current:-<empty>}" "${value:-<empty>}"
+  done < "$plan"
+  return 0
+}
+
+apply_preset() {
+  local name="$1" path work plan keys out kind allowed key value json task field
+  valid_preset_name "$name" || die "invalid preset name: $name"
+  path="$(preset_path "$name")"
+  [[ -f "$path" ]] || die "preset not found: $path"
+  work="$(mktemp -d)"; plan="$work/plan"; keys="$work/advanced-keys"
+  advanced_keys_file > "$keys"
+  if ! out="$(preset_to_plan "$path" "$plan" "$keys" 2>&1)"; then rm -rf "$work"; die "invalid preset '$name': $out"; fi
+  verify_plan_names "$plan" || { rm -rf "$work"; die "preset '$name' does not match current profile capabilities"; }
+
+  local -a preset_diffs=()
+  mapfile -t preset_diffs < <(preset_diff_lines "$plan")
+  ui_clear; ui_header "APPLY PRESET · $name" "$SELECTED_PROFILE · exact capability sets, curated advanced values"
+  if (( ${#preset_diffs[@]} )); then
+    ui_line 'Proposed changes:'
+    for value in "${preset_diffs[@]}"; do ui_line "$value"; done
+  else
+    ui_line 'No effective configuration delta; the preset already matches this profile.'
+  fi
+  ui_confirm "Apply preset '$name'? New session or /reset required." || { rm -rf "$work"; return 0; }
+
+  txn_begin "preset $name" || { rm -rf "$work"; return 1; }
+  local -A want_mcp=()
+  while IFS= read -r key; do
+    if [[ -n "$key" ]]; then want_mcp["$key"]=1; fi
+  done < <(plan_lists "$plan" MCP)
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    if [[ -n "${want_mcp[$key]:-}" ]]; then
+      if ! mcp_enabled "$key"; then config_set_no_txn "mcp_servers.${key}.enabled" true bool; fi
+    else
+      if mcp_enabled "$key"; then config_set_no_txn "mcp_servers.${key}.enabled" false bool; fi
+    fi
+  done < <(mcp_names) || { txn_rollback || true; rm -rf "$work"; return 1; }
+
+  local disabled_csv
+  disabled_csv="$(paste -sd, < <(plan_lists "$plan" SKILL) || true)"
+  config_set_no_txn 'skills.disabled' "$disabled_csv" string || { txn_rollback || true; rm -rf "$work"; return 1; }
+  apply_toolset_set_no_txn "$(plan_lists "$plan" TOOLSET)" || { txn_rollback || true; rm -rf "$work"; return 1; }
+
+  while IFS=$'\t' read -r kind key json; do
+    [[ "$kind" == ADV ]] || continue
+    value="$(json_scalar_to_text "$json")"
+    IFS='|' read -r _kind allowed <<< "$(advanced_kind "$key")"
+    config_set_no_txn "$key" "$value" "$_kind" "$allowed" || { txn_rollback || true; rm -rf "$work"; return 1; }
+  done < "$plan"
+  while IFS=$'\t' read -r kind task field json; do
+    [[ "$kind" == AUX ]] || continue
+    value="$(json_scalar_to_text "$json")"
+    if [[ "$field" == timeout ]]; then _kind=int; else _kind=string; fi
+    config_set_no_txn "auxiliary.${task}.${field}" "$value" "$_kind" || { txn_rollback || true; rm -rf "$work"; return 1; }
+  done < "$plan"
+
+  # Verify exact capability collections after all writes.
+  if [[ "$DRY_RUN" == true ]]; then
+    txn_commit
+    rm -rf "$work"
+    ui_message "Dry-run complete for preset '$name': no profile state was changed."
+    return 0
+  fi
+  while IFS= read -r key; do
+    [[ -z "$key" ]] && continue
+    if [[ -n "${want_mcp[$key]:-}" ]]; then
+      if ! mcp_enabled "$key"; then txn_rollback || true; rm -rf "$work"; die "MCP verification failed: $key"; fi
+    else
+      if mcp_enabled "$key"; then txn_rollback || true; rm -rf "$work"; die "MCP verification failed: $key"; fi
+    fi
+  done < <(mcp_names)
+  verify_toolset_set "$(plan_lists "$plan" TOOLSET)" || { txn_rollback || true; rm -rf "$work"; die 'toolset verification failed'; }
+  [[ "$(paste -sd, < <(skills_disabled) || true)" == "$disabled_csv" ]] || { txn_rollback || true; rm -rf "$work"; die 'skills verification failed'; }
+  txn_commit || { rm -rf "$work"; return 1; }
+  rm -rf "$work"
+  ui_message "Preset '$name' committed and verified. New session or /reset required."
+}
+
+window_presets() {
+  local -a names=() menu=()
+  local file name choice description
+  if [[ -d "$(presets_dir)" ]]; then
+    while IFS= read -r file; do names+=("$(basename "$file" .yaml)"); done < <(find "$(presets_dir)" -maxdepth 1 -type f -name '*.yaml' -print 2>/dev/null | sort)
+  fi
+  menu=('Save current as preset')
+  (( ${#names[@]} )) && menu+=('Apply preset' 'View preset' 'Delete preset')
+  menu+=(Back)
+  ui_clear; ui_header "$SELECTED_PROFILE · PRESETS" 'Per-profile, schema-validated capability snapshots'
+  choice="$(ui_choose 'Preset actions' "${menu[@]}")" || return 0
+  case "$choice" in
+    Back) return 0 ;;
+    'Save current as preset')
+      name="$(ui_input 'Preset name' 'fleet-ops' '')" || return 0
+      [[ -n "$name" ]] || return 0
+      description="$(ui_input 'Description (optional)' 'purpose' '')" || return 0
+      save_preset "$name" "$description"
+      ;;
+    'Apply preset')
+      name="$(ui_choose 'Apply which preset?' "${names[@]}" Back)" || return 0
+      [[ "$name" != Back ]] && apply_preset "$name"
+      ;;
+    'View preset')
+      name="$(ui_choose 'View which preset?' "${names[@]}" Back)" || return 0
+      [[ "$name" == Back ]] && return 0
+      if command -v bat >/dev/null 2>&1; then bat --style=numbers --paging=always "$(preset_path "$name")"; else less -R "$(preset_path "$name")"; fi
+      ;;
+    'Delete preset')
+      name="$(ui_choose 'Delete which preset?' "${names[@]}" Back)" || return 0
+      [[ "$name" == Back ]] && return 0
+      ui_confirm "Delete preset '$name'?" || return 0
+      [[ "$DRY_RUN" == true ]] && { msg "[dry-run] delete $(preset_path "$name")"; return 0; }
+      rm -f -- "$(preset_path "$name")"
+      ui_message "Deleted preset '$name'."
+      ;;
+  esac
+}
+
+# ---------- direct commands / config editor ----------
+
+cmd_toggle_mcp() {
+  local name="$1" desired
+  require_mcp_name "$name"
+  if mcp_enabled "$name"; then desired=false; else desired=true; fi
+  ui_confirm "Set MCP '$name' enabled=$desired? New session or /reset required." || return 0
+  txn_begin "toggle MCP $name" || return 1
+  config_set_no_txn "mcp_servers.${name}.enabled" "$desired" bool || { txn_rollback || true; return 1; }
+  if [[ "$DRY_RUN" == true ]]; then
+    txn_commit
+    msg "[dry-run] MCP $name would become enabled=$desired"
+    return 0
+  fi
+  if [[ "$desired" == true ]]; then
+    if ! mcp_enabled "$name"; then txn_rollback || true; die "MCP verification failed: $name"; fi
+  else
+    if mcp_enabled "$name"; then txn_rollback || true; die "MCP verification failed: $name"; fi
+  fi
+  txn_commit || return 1
+  msg "MCP $name enabled=$desired; start a new session or /reset."
+}
+
+cmd_toggle_toolset() {
+  local name="$1" selected
+  require_toolset_name "$name"
+  if toolsets_enabled | grep -qx "$name"; then
+    selected="$(toolsets_enabled | grep -vx "$name" || true)"
+  else
+    selected="$(printf '%s\n%s\n' "$(toolsets_enabled)" "$name" | sed '/^$/d' | sort -u)"
+  fi
+  ui_confirm "Toggle CLI toolset '$name'? New session or /reset required." || return 0
+  txn_begin "toggle toolset $name" || return 1
+  apply_toolset_set_no_txn "$selected" || { txn_rollback || true; return 1; }
+  if [[ "$DRY_RUN" == true ]]; then
+    txn_commit
+    msg "[dry-run] toolset $name would change"
+    return 0
+  fi
+  verify_toolset_set "$selected" || { txn_rollback || true; die "toolset verification failed: $name"; }
+  txn_commit || return 1
+  msg "Toolset $name changed; start a new session or /reset."
+}
+
+edit_config() {
+  ui_confirm "Open full config in \$EDITOR? A transaction snapshot will be made first." || return 0
+  txn_begin 'manual config edit' || return 1
+  if [[ "$DRY_RUN" == true ]]; then msg "[dry-run] hermes -p $SELECTED_PROFILE config edit"; return 0; fi
+  hermes_p config edit
+  if config_check; then txn_commit; ui_message "Editor returned; config validated. New session or /reset required."
+  else txn_rollback || true; die 'editor change failed config validation and was rolled back'; fi
+}
+
+view_config() {
+  if command -v bat >/dev/null 2>&1; then bat --style=numbers --paging=always "$CONFIG_PATH"
+  else less -R "$CONFIG_PATH"; fi
+}
+
+cmd_list() {
+  local name active model counts enabled total first=true
+  active="$(active_profile_name)"
+  if [[ "$OUTPUT_JSON" == true ]]; then
+    printf '['
+    while IFS= read -r name; do
+      model="$(profile_model_line "$name")"; read -r enabled total < <(profile_mcp_counts "$name")
+      $first || printf ','; first=false
+      python3 - "$name" "$active" "$model" "$enabled" "$total" <<'PY'
+import json, sys
+print(json.dumps({'name':sys.argv[1], 'active':sys.argv[1] == sys.argv[2], 'model':sys.argv[3], 'mcp_enabled':int(sys.argv[4]), 'mcp_total':int(sys.argv[5])}), end='')
+PY
+    done < <(list_profile_names)
+    printf ']\n'
+  else
+    printf '%-18s %-8s %-36s %s\n' PROFILE ACTIVE MODEL MCP
+    while IFS= read -r name; do
+      model="$(profile_model_line "$name")"; read -r enabled total < <(profile_mcp_counts "$name")
+      printf '%-18s %-8s %-36s %s/%s\n' "$name" "$([[ "$name" == "$active" ]] && printf yes || printf no)" "$model" "$enabled" "$total"
+    done < <(list_profile_names)
+  fi
+}
+
+cmd_prompt_size() {
+  refresh_prompt_size || die "prompt-size failed for $SELECTED_PROFILE"
+  if [[ "$OUTPUT_JSON" == true ]]; then printf '%s\n' "$PROMPT_SIZE_JSON"
+  else printf 'Profile: %s\n' "$SELECTED_PROFILE"; format_prompt_size; fi
+}
+
+# ---------- dashboard ----------
+
+select_profile_interactive() {
+  local -a names=() labels=()
+  local active name model enabled total choice i
+  mapfile -t names < <(list_profile_names)
+  (( ${#names[@]} )) || die "no configurable Hermes profiles under $HERMES_HOME_ROOT"
+  active="$(active_profile_name)"
+  for name in "${names[@]}"; do
+    model="$(profile_model_line "$name")"; read -r enabled total < <(profile_mcp_counts "$name")
+    labels+=("$(printf '%-18s %s  %-36s  MCP %s/%s' "$name" "$([[ "$name" == "$active" ]] && printf '◆' || printf ' ')" "$model" "$enabled" "$total")")
+  done
+  ui_clear; ui_header 'HERMES PROFILE CONFIG' "theme: $UI_THEME · ◆ = active sticky profile"
+  choice="$(ui_choose "Profiles under $HERMES_HOME_ROOT" "${labels[@]}")" || return 1
+  for i in "${!labels[@]}"; do [[ "${labels[$i]}" == "$choice" ]] && { load_profile "${names[$i]}"; return 0; }; done
+  return 1
+}
+
+dashboard_summary() {
+  local model reasoning busy enabled total
+  model="$(profile_model_line "$SELECTED_PROFILE")"; reasoning="$(config_get 'agent.reasoning_effort')"; busy="$(config_get 'display.busy_input_mode')"
+  read -r enabled total < <(profile_mcp_counts "$SELECTED_PROFILE")
+  printf 'Model: %s\n' "$model"
+  printf 'Reasoning: %s    Input mode: %s\n' "${reasoning:-—}" "${busy:-—}"
+  printf 'MCP: %s/%s enabled\n' "$enabled" "$total"
+  if [[ "$DRY_RUN" == true ]]; then printf 'MODE: dry-run — no files will change\n'; fi
+  return 0
+}
+
+run_dashboard() {
+  local choice advanced
+  while true; do
+    ui_clear
+    ui_header "$SELECTED_PROFILE · PROFILE DASHBOARD" "theme $UI_THEME · v$VERSION"
+    while IFS= read -r choice; do ui_line "$choice"; done < <(dashboard_summary)
+    ui_metric '// NEXT-SESSION PROMPT SIZE'
+    refresh_prompt_size || true
+    while IFS= read -r choice; do ui_metric "$choice"; done < <(format_prompt_size)
+    ui_line "Config: $CONFIG_PATH"
+    ui_line 'Changes affect new sessions only — start a new session or use /reset.'
+    [[ -n "$LAST_TXN" ]] && ui_line "Latest transaction: $(basename "$LAST_TXN")"
+
+    choice="$(ui_choose "$SELECTED_PROFILE · Profile capabilities · Enter opens · Esc exits" \
+      'Toolsets' 'Skills' 'MCP servers' 'Presets' 'Advanced configuration' \
+      'Auxiliary models' 'Global plugins' 'Edit full config' 'View config' \
+      'Undo last transaction' 'Refresh prompt size' 'Switch profile' 'Quit')" || break
+    case "$choice" in
+      Toolsets) window_toolsets ;;
+      Skills) window_skills ;;
+      'MCP servers') window_mcp ;;
+      Presets) window_presets ;;
+      'Advanced configuration') window_advanced ;;
+      'Auxiliary models') window_auxiliary ;;
+      'Global plugins') window_plugins ;;
+      'Edit full config') edit_config ;;
+      'View config') view_config ;;
+      'Undo last transaction') cmd_undo ;;
+      'Refresh prompt size') refresh_prompt_size || ui_message 'prompt-size failed.' ;;
+      'Switch profile') select_profile_interactive || true ;;
+      Quit) break ;;
+    esac
+  done
+}
+
+main() {
+  parse_args "$@"
+  apply_theme "$THEME"
+  require_cmd hermes; require_cmd yq; require_cmd python3
+  python3 -c 'import yaml' >/dev/null 2>&1 || die 'PyYAML is required for validated presets'
+  [[ -d "$HERMES_HOME_ROOT" ]] || die "Hermes home not found: $HERMES_HOME_ROOT"
+  if [[ "$COMMAND" == menu && "$NO_UI" == false ]]; then
+    require_cmd fzf
+    require_cmd gum
+  fi
+  if [[ "$COMMAND" == menu && "$NO_UI" == true ]]; then die '--no-ui requires a direct command plus --profile --yes'; fi
+
+  if [[ "$COMMAND" == list ]]; then cmd_list; return 0; fi
+  if [[ -n "$CLI_PROFILE" ]]; then load_profile "$CLI_PROFILE"
+  elif [[ "$COMMAND" == menu ]]; then select_profile_interactive || return 0
+  else die "$COMMAND requires --profile"; fi
+
+  case "$COMMAND" in
+    menu) run_dashboard ;;
+    prompt-size) cmd_prompt_size ;;
+    toggle-mcp) cmd_toggle_mcp "$COMMAND_ARG" ;;
+    toggle-toolset) cmd_toggle_toolset "$COMMAND_ARG" ;;
+    save-preset) save_preset "$COMMAND_ARG" '' ;;
+    apply-preset) apply_preset "$COMMAND_ARG" ;;
+    edit-config) edit_config ;;
+    undo) cmd_undo ;;
+    *) die "unsupported command: $COMMAND" ;;
+  esac
+}
+
+main "$@"

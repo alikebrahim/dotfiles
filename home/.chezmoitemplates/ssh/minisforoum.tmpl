@@ -1,0 +1,40 @@
+# SSH auth uses the plain file key ~/.ssh/primary_key (moved out of the
+# 1Password agent, 2026-08; same key as servalws per Ali's decision).
+# Per-host IdentityAgent lines below are kept commented out for reference;
+# ~/.1password/agent.sock no longer exists.
+
+Host servalws
+    HostName servalws
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    # IdentityAgent ~/.1password/agent.sock
+
+Host macbook
+    HostName macbook
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    # IdentityAgent ~/.1password/agent.sock
+
+Host zotac-box
+    HostName zotac-box
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    # IdentityAgent ~/.1password/agent.sock
+
+Host netmaster
+    HostName netmaster
+    User hostmaster
+    IdentityFile ~/.ssh/primary_key
+    # IdentityAgent ~/.1password/agent.sock
+    SetEnv LC_TMUX_DEVICE=minisforoum
+
+Host honor
+    HostName honor
+    Port 8022
+    User u0_a290
+    SetEnv LC_TMUX_DEVICE=honor
+
+Host *
+	IdentityFile ~/.ssh/primary_key
+	# IdentityAgent ~/.1password/agent.sock
+	IdentitiesOnly yes

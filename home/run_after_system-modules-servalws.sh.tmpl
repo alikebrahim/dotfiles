@@ -1,0 +1,77 @@
+{{/* system-modules (servalws): delivers /etc files + services via sudo
+     install -D + cmp self-verification (module-runner discipline, D5-A).
+     Assets stay in scripts/system/ (outside home/, per design/02 §9).
+     Renders EMPTY (script skipped) until Phase 4 activation. */}}
+{{- if and (.scripts.activateScripts | default false) (eq .chezmoi.hostname "servalws") (index .hostFacts .chezmoi.hostname).systemModules -}}
+#!/bin/bash
+set -euo pipefail
+
+# Assets live at <repo>/scripts/system — one level above the chezmoi source
+# dir (design/02 §9: stay outside home/ until Phase-5 consolidation).
+MODULE_ROOT="{{ .chezmoi.sourceDir }}/.."
+ASSETS="$MODULE_ROOT/scripts/system"
+
+echo "== system-modules: servalws =="
+
+install_file() { # $1=source $2=target $3=mode
+    local src="$1" dst="$2" mode="${3:-0644}"
+    [[ -r "$src" ]] || { echo "BLOCKED missing asset: $src"; return 1; }
+    # Compare as root: some /etc target dirs are root-only (e.g. polkit
+    # rules.d is 0750 root:polkitd on Fedora) — plain cmp gets EPERM.
+    if sudo cmp -s "$src" "$dst"; then
+        echo "CURRENT $dst"
+        return 0
+    fi
+    sudo install -D -m "$mode" "$src" "$dst"
+    if sudo cmp -s "$src" "$dst"; then
+        echo "CHANGED $dst"
+    else
+        echo "BLOCKED verify failed: $dst"
+        return 1
+    fi
+}
+
+rc=0
+install_file "$ASSETS/xorg-libinput/40-libinput-natural-scrolling.conf" \
+    /etc/X11/xorg.conf.d/40-libinput-natural-scrolling.conf 0644 || rc=1
+
+install_file "$ASSETS/polkit/49-1password-unlock.rules" \
+    /etc/polkit-1/rules.d/49-1password-unlock.rules 0644 || rc=1
+
+install_file "$ASSETS/battery-charge-thresholds/battery-charge-thresholds.service" \
+    /etc/systemd/system/battery-charge-thresholds.service 0644 || rc=1
+
+# battery service enable + thresholds (only when BAT0 controls exist)
+if [[ -r /sys/class/power_supply/BAT0/charge_control_start_threshold ]]; then
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now battery-charge-thresholds.service
+    s="$(cat /sys/class/power_supply/BAT0/charge_control_start_threshold)"
+    e="$(cat /sys/class/power_supply/BAT0/charge_control_end_threshold)"
+    [[ "$s" == 50 && "$e" == 60 ]] && echo "CURRENT battery thresholds 50-60" \
+        || { echo "DRIFT battery thresholds $s-$e (want 50-60)"; rc=1; }
+else
+    echo "SKIP battery thresholds (no BAT0 controls on this chassis)"
+fi
+
+install_file "$ASSETS/ly/config.ini"      /etc/ly/config.ini 0644 || rc=1
+install_file "$ASSETS/ly/startup.sh"      /etc/ly/startup.sh 0755 || rc=1
+install_file "$ASSETS/ly/animations/cosmic-gravity-monitor-16c-240x67.dur" \
+    /etc/ly/animations/cosmic-gravity-monitor-16c-240x67.dur 0644 || rc=1
+
+# ly display manager service
+if rpm -q ly >/dev/null 2>&1; then
+    sudo systemctl enable --now ly@tty2.service
+    echo "CURRENT ly@tty2.service"
+else
+    echo "MANUAL ly package absent — dnf install ly, then re-apply"
+    rc=1
+fi
+
+# mate-polkit package (used by AwesomeWM session startup)
+if ! rpm -q mate-polkit >/dev/null 2>&1; then
+    sudo dnf install -y mate-polkit
+fi
+rpm -q mate-polkit >/dev/null 2>&1 && echo "CURRENT mate-polkit" || { echo "ABSENT mate-polkit"; rc=1; }
+
+exit "$rc"
+{{- end -}}

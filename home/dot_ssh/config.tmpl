@@ -1,0 +1,19 @@
+{{/* SSH config dispatcher: one target file ~/.ssh/config built from the
+     per-host fragment library in .chezmoitemplates/ssh/.
+     zotac-box picks the fragment by USER (alikebrahim / tima), others by
+     hostname. Fragments are byte-identical to today's ssh/<host>/.ssh/config
+     contents (public host aliases + paths only; no secrets). */}}
+{{- $frag := "" -}}
+{{- if eq .chezmoi.hostname "servalws" }}{{ $frag = "servalws" }}
+{{- else if eq .chezmoi.hostname "netmaster" }}{{ $frag = "netmaster" }}
+{{- else if eq .chezmoi.hostname "minisforoum" }}{{ $frag = "minisforoum" }}
+{{- else if eq .chezmoi.hostname "macbook" }}{{ $frag = "macbook" }}
+{{- else if eq .chezmoi.hostname "honor" }}{{ $frag = "honor" }}
+{{- else if eq .chezmoi.hostname "zotac-box" -}}
+{{-   if eq .chezmoi.username "tima" }}{{ $frag = "zotac-box-tima" }}
+{{-   else }}{{ $frag = "zotac-box-alikebrahim" }}
+{{-   end }}
+{{- else -}}
+{{- fail (printf "Unknown hostname %q for ssh config dispatch" .chezmoi.hostname) }}
+{{- end -}}
+{{ include (printf ".chezmoitemplates/ssh/%s.tmpl" $frag) }}

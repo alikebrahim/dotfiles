@@ -1,0 +1,42 @@
+Host netmaster
+    HostName netmaster
+    User hostmaster
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+    SetEnv LC_TMUX_DEVICE=macbook
+
+Host servalws
+    HostName servalws
+    User alikebrahim
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+
+Host zotac-box
+    HostName zotac-box
+    User alikebrahim
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+
+Host tima@zotac-box
+    HostName zotac-box
+    User tima
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+
+Host minisforoum
+    HostName minisforoum
+    User alikebrahim
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+
+Host macbook
+    HostName macbook
+    User alikebrahim
+    IdentityFile ~/.ssh/alikebrahim@macbook_key
+    IdentitiesOnly yes
+
+Host honor
+    HostName honor
+    Port 8022
+    User 0_a290
+    SetEnv LC_TMUX_DEVICE=honor

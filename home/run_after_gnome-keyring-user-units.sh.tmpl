@@ -1,0 +1,24 @@
+{{/* gnome-keyring user units (servalws): enable + start the user service
+     and socket, ported from user:gnome-keyring-units (D5-A).
+     Renders EMPTY (script skipped) until Phase 4 activation. */}}
+{{- if and (.scripts.activateScripts | default false) (eq .chezmoi.hostname "servalws") -}}
+#!/bin/bash
+set -euo pipefail
+
+command -v systemctl >/dev/null 2>&1 || { echo "skip: no systemctl"; exit 0; }
+
+changed=0
+for unit in gnome-keyring-daemon.service gnome-keyring-daemon.socket; do
+    if ! systemctl --user is-enabled "$unit" >/dev/null 2>&1; then
+        systemctl --user enable --now "$unit"
+        changed=1
+        echo "CHANGED enabled $unit"
+    elif ! systemctl --user is-active "$unit" >/dev/null 2>&1; then
+        systemctl --user start "$unit"
+        changed=1
+        echo "CHANGED started $unit"
+    fi
+done
+(( changed == 0 )) && echo "CURRENT gnome-keyring user units"
+exit 0
+{{- end -}}

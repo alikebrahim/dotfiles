@@ -4,14 +4,28 @@ Analysis, research, design, and planning project for migrating `~/.dotfiles`
 from the current GNU Stow + `configure-host.sh` architecture to
 [chezmoi](https://www.chezmoi.io/).
 
-**Status (2026-08-17): design finalized; readiness = CONDITIONAL GO.**
-Decisions D1–D6 and D8–D12 locked by Ali (all option A). D7 (tmux
-plugins) open — plain-English A/B comparison in design/04; it blocks
-Phase 4 only, not the spike. GLM review findings (F1–F12) and
-readiness-report findings (E1–E10) are folded into the design and plan.
-Remaining before Phase 1: capture the Phase-0 baseline snapshot
-(`analysis/03`), then run the sandbox spike (unknowns U1–U8, now
-including the ssh-overlay unstow rehearsal).
+**Status (2026-08-22): Phase 3 complete on minisforoum (design/09),
+netmaster (design/10), macbook (design/11). Phase 4 complete on servalws — all
+four run_* scripts activated and green live (record: design/08-phase4-record.md).
+Phase 3 complete — all 130 stow symlinks
+converted to chezmoi-managed files (276 unstows incl. 91-apps/icons,
+status clean, idempotent; snapshot + record at
+design/07-phase3-record.md). Phase 2 exit gate PASSED.** All 12 decisions locked by Ali (every one option A; D7 closed
+2026-08-17: `run_after_` ensure-script, externals rejected). GLM review
+findings (F1–F12) and readiness-report findings (E1–E10) folded into the
+design and plan. Baseline captured (`analysis/03-baseline-2026-08.md`);
+Phase 1 spike (U1–U8) executed and reported (`design/05-spike-report.md`).
+Phase 2 (2026-08-18/19): `home/` tree built (299 files: bulk copy with
+mode-derived attributes + authored templates/scripts), validated by a
+six-host container apply matrix (rc=0, idempotent, per-host themes/ssh/
+gating all correct) and the container smoke exit gate (fresh `init
+--source` → apply → verify exit 0 → modes faithful). Deviations from
+design/02 are logged in `design/06-phase2-record.md` (hostname-keyed
+hostFacts instead of init prompts; never-selected packages skipped;
+authorized_keys plaintext `private_` with encryption deferred per D4-A;
+pre-existing `.gitconfig`→delta include mismatch preserved and PARKED for
+a deliberate post-migration fix). Next: Phase 3 — convert servalws first,
+with the mandatory snapshot gate.
 
 ## Why this project exists
 
@@ -55,7 +69,8 @@ stow-to-chezmoi-migration/
     ├── 02-target-architecture.md <- repo layout, data model, per-host/user, secrets, scripts
     ├── 03-migration-plan.md   <- phases 0-6 with approval gates
     ├── 04-decisions-and-risks.md <- D1-D12 for Ali + risk register
-    └── (05-spike-report.md    <- Phase 1 deliverable)
+    ├── 05-spike-report.md      <- Phase 1 spike results (U1–U8, S1–S4)
+    └── 06-phase2-record.md     <- Phase 2 build record (tree, deviations, evidence)
 ```
 
 ## Key documents to read first
@@ -81,10 +96,12 @@ stow-to-chezmoi-migration/
 
 ## Next steps
 
-1. ~~Ali reviews decisions D1–D4~~ — done 2026-08-17 (all A; D7 open).
-2. Close D7 (A vs B for tmux plugins — explanation in design/04).
-3. Approve Phase 1: sandbox spike (install chezmoi to a scratch location,
-   test `.chezmoiroot`/`symlink_`/encryption/scripts/seq-A-B against a fake
-   HOME and a container — unknowns U1–U8).
-4. Build the `home/` source tree (Phase 2, container smoke test as exit
-   gate).
+1. ~~Ali reviews decisions~~ — done 2026-08-17: all 12 decisions A
+   (D7 closed same day).
+2. ~~Capture the Phase-0 baseline snapshot~~ — done 2026-08-18
+   (`analysis/03-baseline-2026-08.md`).
+3. ~~Approve Phase 1: sandbox spike~~ — done 2026-08-18 ("age installed.
+   Proceed"): all unknowns U1–U8 closed, `design/05-spike-report.md`
+   written, corrections S1–S4 folded into design/02 + design/03.
+4. Approve Phase 2: build the `home/` source tree in the repo
+   (container smoke test as exit gate).

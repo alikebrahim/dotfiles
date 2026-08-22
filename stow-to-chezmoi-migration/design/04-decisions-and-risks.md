@@ -167,8 +167,9 @@ your review surface and on a timer.
 which you also chose to preserve explicitly for `--update`. Say A or B and
 this decision closes.
 
-> **STATUS — open, awaiting Ali's A/B choice** (everything else in this
-> document is decided).
+> **DECIDED — A (2026-08-17, Ali):** accepted the recommendation —
+> `run_after_ensure-tmux-plugins.sh` (Option A); `.chezmoiexternal` deferred
+> (GLM §6). All 12 decisions are now closed — every one option A.
 
 ### D8 — gum dashboard
 
@@ -280,8 +281,9 @@ approved.
 
 ## Status
 
-- **Decisions locked 2026-08-17 (Ali):** D1–D6 and D8–D12 are all option A,
-  matching recommendations. **D7 (tmux plugins) remains open** — plain-English
-  A/B comparison above; A recommended; closes with a single word from Ali.
+- **All 12 decisions locked 2026-08-17 (Ali) — every one option A,**
+  matching recommendations. D7 closed late the same day: recommendation A
+  accepted (`run_after_` ensure-script; `.chezmoiexternal` rejected for
+  diff-invisibility).
 - Risks re-scored 2026-08-17 after the GLM review (R5, R7 updated; R14
   added). Re-score again after the spike closes U1–U8.

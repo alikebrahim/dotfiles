@@ -1,0 +1,72 @@
+Host netmaster
+    HostName 100.75.210.33
+    User git
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host servalws
+    HostName servalws
+    User hostmaster
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host macbook
+    HostName macbook
+    User hostmaster
+    IdentityFile ~/.ssh/hostmaster_key
+
+Host zotac-box
+    HostName zotac-box
+    User hostmaster
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host minisforoum
+    HostName minisforoum
+    User hostmaster
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host axmi-servalws
+    HostName servalws
+    User alikebrahim
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host axmi-macbook
+    HostName macbook
+    User alikebrahim
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host axmi-minisforoum
+    HostName minisforoum
+    User alikebrahim
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host axmi-zotac-box
+    HostName zotac-box
+    User alikebrahim
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host tima@zotac-box
+    HostName zotac-box
+    User tima
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes
+
+Host honor
+    HostName honor
+    Port 8022
+    User u0_a290
+    SetEnv LC_TMUX_DEVICE=honor
+    IdentityFile ~/.ssh/hostmaster_key
+    IdentitiesOnly yes

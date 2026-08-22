@@ -1,0 +1,2 @@
+module modules.calendar
+CalendarPanel 1.0 CalendarPanel.qml

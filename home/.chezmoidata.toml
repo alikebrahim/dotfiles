@@ -1,0 +1,98 @@
+# Shared data for all hosts. Per-machine overrides live in the
+# per-host config [data] (see .chezmoi.toml.tmpl), which wins over this file.
+# Keys referenced by templates must exist HERE (spike S2: `default` does not
+# guard missing keys).
+
+[git]
+name = "Ali K. Ebrahim"
+email = "alikebrahim@me.com"
+
+[themes]
+# library of valid choices (documentation + validation aid)
+tmux = [
+    "amber-crt", "blue-matrix", "catppuccine", "cga-cyan-magenta",
+    "commodore-64", "green-phosphor", "ibm-5153-cga", "kanagawa-wave",
+    "mac-classic", "nord", "orange-gas-plasma", "retro-pi",
+]
+ui = ["amber-crt", "green-phosphor", "orange-gas-plasma"]
+
+[scripts]
+# Phase-4 (2026-08-19): scripts ACTIVATED on the pilot host after the
+# container rehearsal gate passed (apply rc=0 ×2, /etc MATCH 6/6,
+# idempotent, verify rc=0). Flip back to false to render all run_*
+# empty again (revert path).
+activateScripts = true
+
+# ── Per-host facts (replaces scripts/profiles/*.conf) ──────────────
+# Selected at apply time by .chezmoi.hostname; zotac-box further branches
+# on .chezmoi.username (see dot_ssh/config.tmpl + .chezmoiignore).
+# Sources: netmaster.conf, servalws.conf, minisforoum.conf, zotac-box.conf,
+# macbook.conf, honor.conf + the tmux-remote-* overlay theme selections.
+
+[hostFacts.netmaster]
+tmuxTheme = "green-phosphor"
+uiTheme = "orange-gas-plasma"
+toolset = "developer"
+desktop = false
+apps = false
+onepassword = false
+wezterm = false
+systemModules = false
+
+[hostFacts.servalws]
+tmuxTheme = "orange-gas-plasma"
+uiTheme = "orange-gas-plasma"
+toolset = "desktop-full"
+desktop = true
+apps = true
+onepassword = true
+wezterm = true
+systemModules = true
+
+[hostFacts.minisforoum]
+tmuxTheme = "commodore-64"
+uiTheme = "orange-gas-plasma"
+toolset = "developer"
+desktop = false
+apps = true
+onepassword = true
+wezterm = true
+systemModules = false
+
+[hostFacts.zotac-box]
+tmuxTheme = "ibm-5153-cga"
+uiTheme = "orange-gas-plasma"
+toolset = "minimal"
+desktop = false
+apps = "tima-only"
+onepassword = false
+wezterm = false
+systemModules = false
+
+[hostFacts.macbook]
+tmuxTheme = "amber-crt"
+uiTheme = "orange-gas-plasma"
+toolset = ""
+desktop = false
+apps = false
+onepassword = false
+wezterm = false
+systemModules = false
+
+[hostFacts.honor]
+tmuxTheme = "green-phosphor"
+uiTheme = "amber-crt"
+toolset = ""
+desktop = false
+apps = false
+onepassword = false
+wezterm = false
+systemModules = false
+
+
+[tools]
+# Toolsets ported from scripts/lib/tools.sh registry sets.
+minimal = ["zsh", "tmux", "delta"]
+developer = ["zsh", "tmux", "delta", "rg", "fd", "zoxide", "fzf", "lazygit"]
+desktop = ["zsh", "tmux", "delta", "rg", "fd", "zoxide", "fzf", "lazygit", "awesome"]
+desktop-full = ["zsh", "tmux", "delta", "rg", "fd", "zoxide", "fzf", "lazygit", "awesome", "yazi"]

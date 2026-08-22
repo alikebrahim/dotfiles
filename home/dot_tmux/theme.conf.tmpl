@@ -1,0 +1,10 @@
+{{/* tmux theme selector: replaces the six tmux-remote-* overlay packages.
+     Theme choice comes from hostFacts (selected by hostname at apply time),
+     NOT from per-host config [data] — the whole tree renders with zero
+     init-generated config. Reload tmux with prefix + r after a change. */}}
+{{- $facts := index .hostFacts .chezmoi.hostname -}}
+# {{ .chezmoi.hostname }} theme selector (generated)
+# Active theme: {{ $facts.tmuxTheme }} — change it in
+# home/.chezmoidata.toml (hostFacts.<hostname>.tmuxTheme), then re-apply.
+
+source-file ~/.tmux/themes/{{ $facts.tmuxTheme }}.conf

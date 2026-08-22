@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Blender
+Exec=blender %u
+Terminal=false
+Type=Application
+Icon=blender
+StartupWMClass=blender
+Comment=3D modeling and animation
+Categories=Graphics;

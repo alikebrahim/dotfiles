@@ -1,0 +1,59 @@
+{{/* Per-host selection: which target trees this machine gets.
+     Patterns are TARGET-relative (match destination paths, e.g.
+     ".config/awesome" not "dot_config/awesome"). Rules, from profiles:
+     - desktop stack (awesome, quickshell, scripts dir, picom, flameshot):
+       servalws only (desktop=true)
+     - wezterm: servalws + minisforoum
+     - apps (.local/share applications/icons): servalws, minisforoum,
+       tima on zotac-box
+     - 1Password bits (agent.toml + signing include): servalws, minisforoum
+     - .config/themes.gitconfig (delta package) is COMMON — never ignored
+     - known_hosts seed: everywhere except honor
+*/}}
+{{- $facts := index .hostFacts .chezmoi.hostname -}}
+{{- if not $facts -}}
+{{- fail (printf "No hostFacts entry for hostname %q — add it to home/.chezmoidata.toml" .chezmoi.hostname) }}
+{{- end -}}
+
+{{/* ── desktop stack: servalws only ── */}}
+{{- if not $facts.desktop }}
+.config/awesome
+.config/quickshell
+.config/scripts
+.config/picom
+.config/flameshot
+.local/bin/theme-apply
+.local/bin/theme-select
+{{- end }}
+
+{{/* ── wezterm: servalws + minisforoum ── */}}
+{{- if not $facts.wezterm }}
+.config/wezterm
+{{- end }}
+
+{{/* ── apps (.local/share): servalws, minisforoum, tima@zotac-box ── */}}
+{{- if not $facts.apps }}
+.local/share/applications
+.local/share/icons
+{{- end }}
+{{- if and (eq .chezmoi.hostname "zotac-box") (ne .chezmoi.username "tima") }}
+.local/share/applications
+.local/share/icons
+{{- end }}
+
+{{/* ── 1Password bits: servalws + minisforoum ──
+     agent.toml ARCHIVED 2026-08-19: user moved to key-on-disk SSH
+     (~/.ssh/primary_key); the agent config is dead, not migrated.
+     The signing gitconfig stays — despite the name it is the live
+     key-on-disk signing config (primary_key + ssh-keygen). */}}
+{{- if not $facts.onepassword }}
+.config/git/1password-signing.gitconfig
+{{- end }}
+
+{{/* ── app-rewritten state: never managed anywhere ── */}}
+.config/nvim/lazy-lock.json
+
+{{/* ── ssh known_hosts seed: honor has none today ── */}}
+{{- if eq .chezmoi.hostname "honor" }}
+.ssh/known_hosts
+{{- end }}

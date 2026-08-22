@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Compact host-agnostic status for tmux.
+# Shows CPU temperature, root disk use, any mounted /mnt filesystems, and 1-minute load.
+
+set -u
+
+# Temperature
+if [[ -r /sys/class/thermal/thermal_zone0/temp ]]; then
+  read -r temp_milli < /sys/class/thermal/thermal_zone0/temp
+  temp="$((temp_milli / 1000))°C"
+else
+  temp="--°C"
+fi
+
+# Root filesystem usage
+root_use="--"
+if command -v df >/dev/null 2>&1; then
+  root_use="$(df -hP / 2>/dev/null | awk 'NR==2 {print $5}')"
+fi
+
+# External filesystems mounted under /mnt (auto-detected, host-agnostic).
+# Each shows as "<basename> <use%>". Nothing shown when none are mounted.
+mnt_segment=""
+if command -v findmnt >/dev/null 2>&1; then
+  while IFS= read -r mnt; do
+    [[ -n "$mnt" ]] || continue
+    mnt_use="$(df -hP "$mnt" 2>/dev/null | awk 'NR==2 {print $5}')"
+    [[ -n "$mnt_use" ]] || continue
+    mnt_segment="$mnt_segment $(basename "$mnt") $mnt_use"
+  done < <(findmnt -lno TARGET -t ext4,btrfs,xfs 2>/dev/null | grep '^/mnt/' | sort)
+fi
+
+# Load average
+if [[ -r /proc/loadavg ]]; then
+  read -r load _ < /proc/loadavg
+else
+  load="--"
+fi
+
+printf 'temp %s / %s%s load %s' "$temp" "$root_use" "$mnt_segment" "$load"

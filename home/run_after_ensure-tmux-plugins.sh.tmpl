@@ -1,0 +1,36 @@
+{{/* ensure-tmux-plugins: ports scripts/install-tmux-plugins.sh --ensure
+     semantics — clone missing plugins only, never pulls existing checkouts.
+     --update stays a manual command (DECIDED D7-A).
+     Renders EMPTY (script skipped) until Phase 4 flips activateScripts. */}}
+{{- if .scripts.activateScripts | default false -}}
+#!/bin/bash
+set -euo pipefail
+
+PLUGINS_DIR="$HOME/.tmux/plugins"
+PLUGINS=(
+    "tpm|https://github.com/tmux-plugins/tpm"
+    "tmux-sensible|https://github.com/tmux-plugins/tmux-sensible"
+    "tmux-resurrect|https://github.com/tmux-plugins/tmux-resurrect"
+    "tmux-continuum|https://github.com/tmux-plugins/tmux-continuum"
+    "tmux-fzf|https://github.com/sainnhe/tmux-fzf"
+)
+
+mkdir -p "$PLUGINS_DIR"
+
+for entry in "${PLUGINS[@]}"; do
+    name="${entry%%|*}"
+    url="${entry##*|}"
+    dest="$PLUGINS_DIR/$name"
+
+    if [[ -d "$dest/.git" ]]; then
+        echo "CURRENT $name (left unchanged)"
+    elif [[ -d "$dest" ]]; then
+        echo "BLOCKED $name exists but is not a Git checkout: $dest" >&2
+        exit 2
+    else
+        echo "CLONING $name"
+        git clone --quiet --depth=1 "$url" "$dest"
+    fi
+done
+echo "Done: tmux plugins ensured in $PLUGINS_DIR"
+{{- end -}}
