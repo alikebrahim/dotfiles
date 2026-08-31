@@ -1,9 +1,8 @@
 # Quickshell desktop shell
 
-This is the Omarchy-styled Quickshell layer for this
-AwesomeWM/X11 desktop. The end state is one Quickshell-owned visual system for
-the bar, status/control panels, launchers, window selection, session actions,
-and notifications.
+This is the Quickshell layer for this AwesomeWM/X11 desktop. The end state is
+one Quickshell-owned visual system for the bar, status/control panels,
+launchers, window selection, session actions, and notifications.
 
 ## Current state — 2026-07-28
 
@@ -11,12 +10,12 @@ Quickshell 0.3.0 is permanently integrated with AwesomeWM and currently owns:
 
 - the continuous 26px primary-output bar;
 - synchronized Awesome tags, focused-client title, and centered
-  `date - time` clock;
+  `date - time - weather` block;
 - a resident bounded StatusNotifier tray plus Bluetooth, network, audio,
   display, and power status;
 - native notification toasts/history, a reduced Tailscale panel, MPRIS media,
   and an explicit-location weather pill/panel;
-- one keyboard-navigable Omarchy-style controls popup;
+- one keyboard-navigable controls popup;
 - a live, accepted Mod+Tab window switcher, Mod+Space application launcher, and
   guarded Mod+Escape session menu;
 - a live, accepted centered-clock calendar with bar-popout coordination;

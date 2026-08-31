@@ -2,7 +2,7 @@ pragma Singleton
 import QtQml
 
 QtObject {
-  // Direct X11 adaptation of Omarchy Quattro's default shell.toml tokens.
+  // Shared shell metrics for the 26px X11 bar and popouts.
   readonly property int barHeight: 26
   readonly property int edgeInset: 8
   readonly property int sectionGap: 8
@@ -29,6 +29,7 @@ QtObject {
   readonly property int notificationToastWidth: 380
   readonly property int notificationToastHeight: 122
   readonly property int notificationToastGap: 8
+  readonly property int maxVisibleToasts: 4
   readonly property int notificationCardPadding: 10
   readonly property int notificationIconSize: 38
   readonly property int notificationHistoryWidth: 420
@@ -43,6 +44,8 @@ QtObject {
   readonly property int weatherForecastRowHeight: 42
   readonly property int weatherSuggestionHeight: 46
   readonly property int popupWidth: 380
+  readonly property int popupMaxContentHeight: 560
+  readonly property int popupHostHeight: popupMaxContentHeight + panelPadding * 2
   readonly property int cornerRadius: 6
   readonly property int captionSize: 10
   readonly property int bodySmallSize: 11

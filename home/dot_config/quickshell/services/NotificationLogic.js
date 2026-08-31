@@ -141,6 +141,9 @@ function timeoutMs(snapshot, lowMs, normalMs, maxMs) {
   if (number(snapshot.urgency, 1) >= 2) return 0
   var requested = number(snapshot.expireTimeout, -1)
   var fallback = number(snapshot.urgency, 1) <= 0 ? lowMs : normalMs
-  if (requested <= 0) return fallback
+  // Quickshell copies the D-Bus INT32 expire_timeout (milliseconds).
+  // Spec: -1 = server default, 0 = never expire, >0 = timeout in ms.
+  if (requested === 0) return 0
+  if (requested < 0) return fallback
   return Math.max(1000, Math.min(requested, maxMs))
 }

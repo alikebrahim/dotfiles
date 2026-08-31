@@ -14,6 +14,12 @@ local action_names = {
     "audio_controls",
     "network_controls",
     "bluetooth_controls",
+    "volume_up",
+    "volume_down",
+    "volume_mute",
+    "mic_mute",
+    "brightness_up",
+    "brightness_down",
 }
 local shell_actions = {}
 
@@ -297,7 +303,14 @@ keys.globalkeys = gears.table.join(
   awful.key({ modkey }, "d", function() launch_app("/usr/bin/Discord", 2, "right") end, { description = "launch Discord (ws 2, right)", group = "launcher" }),
   awful.key({ modkey }, "w", function() launch_app("google-chrome --app=https://web.whatsapp.com", 2, "left") end, { description = "launch WhatsApp (ws 2, left)", group = "launcher" }),
 
-  -- Screenshots / capture, Omarchy-inspired but X11-native via Flameshot.
+  awful.key({}, "XF86AudioRaiseVolume", function() shell_actions.volume_up() end, { description = "volume up", group = "system" }),
+  awful.key({}, "XF86AudioLowerVolume", function() shell_actions.volume_down() end, { description = "volume down", group = "system" }),
+  awful.key({}, "XF86AudioMute", function() shell_actions.volume_mute() end, { description = "toggle mute", group = "system" }),
+  awful.key({}, "XF86AudioMicMute", function() shell_actions.mic_mute() end, { description = "toggle microphone mute", group = "system" }),
+  awful.key({}, "XF86MonBrightnessUp", function() shell_actions.brightness_up() end, { description = "brightness up", group = "system" }),
+  awful.key({}, "XF86MonBrightnessDown", function() shell_actions.brightness_down() end, { description = "brightness down", group = "system" }),
+
+  -- Screenshots / capture via Flameshot.
   awful.key({}, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "interactive screenshot", group = "screenshots" }),
   awful.key({ modkey }, "Print", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh full") end, { description = "full screenshot", group = "screenshots" }),
   awful.key({ modkey, "Shift" }, "s", function() awful.spawn("/home/alikebrahim/.config/scripts/screenshot-flameshot.sh gui") end, { description = "region screenshot", group = "screenshots" }),

@@ -75,8 +75,11 @@ ShellRoot {
   property Services.PowerService powerService: Services.PowerService {
     transport: shell.commandTransport
   }
+  property Services.CommandTransport brightnessCommandTransport: Services.CommandTransport {
+    allowMutations: Quickshell.env("QUICKSHELL_ENABLE_MUTATIONS") === "1"
+  }
   property Services.BrightnessService brightnessService: Services.BrightnessService {
-    transport: shell.commandTransport
+    transport: shell.brightnessCommandTransport
   }
   property Services.DisplayService displayService: Services.DisplayService {
     transport: shell.displayCommandTransport
@@ -120,9 +123,11 @@ ShellRoot {
     screen: shell.primaryBar.resolvedScreen
     barPopoutController: shell.barPopoutController
     barVisible: shell.shellState.barVisible
+    popoutHost: shell.primaryBar.popoutHost
   }
   property Notifications.NotificationToasts notificationToasts: Notifications.NotificationToasts {
     notificationService: shell.notificationService
+    barPopoutController: shell.barPopoutController
     targetScreen: shell.primaryBar.resolvedScreen
     suppressed: shell.machineSynoptic.lockMode
   }
@@ -151,6 +156,8 @@ ShellRoot {
   }
   property Osd.Osd osd: Osd.Osd {
     bridge: shell.awesomeBridge
+    audioService: shell.audioService
+    brightnessService: shell.brightnessService
   }
 
   Connections {

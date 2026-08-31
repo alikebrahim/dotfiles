@@ -11,6 +11,7 @@ Item {
   property var screen: null
   property var tailscaleService: null
   property var clipboardService: null
+  property var popoutHost: null
   required property QtObject barPopoutController
   property int selectedIndex: 0
   property string copiedPeerKey: ""
@@ -108,13 +109,11 @@ Item {
     tailscalePopup.open = true
     tailscaleService.setPanelOpen(true)
     ensureSelection()
-    focusRetry.restart()
     return true
   }
 
   function closePopup() {
     tailscalePopup.open = false
-    focusRetry.stop()
     if (tailscaleService) tailscaleService.setPanelOpen(false)
     barPopoutController.release(surfaceName)
     return true
@@ -130,7 +129,9 @@ Item {
 
   function requestKeyboardFocus() {
     if (!tailscalePopup.open) return
-    var windowObject = tailscalePopup.contentItem ? tailscalePopup.contentItem.Window.window : null
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
+      : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
     else windowObject.requestActivate()
@@ -173,14 +174,8 @@ Item {
     anchorItem: root
     text: "Tailscale · " + root.connectionLabel
     shown: indicatorHover.hovered && !tailscalePopup.open
+    barPopoutController: root.barPopoutController
     delay: 500
-  }
-
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
   }
 
   Timer {
@@ -191,13 +186,10 @@ Item {
   }
 
   Connections {
-    id: tailscaleActivation
-    target: tailscalePopup.contentItem ? tailscalePopup.contentItem.Window.window : null
-    function onActiveChanged() {
-      var windowObject = tailscaleActivation.target
-      if (!tailscalePopup.open || !windowObject) return
-      root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.focusKeyboardItem)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (tailscalePopup.open) root.focusKeyboardItem()
     }
   }
 
@@ -206,35 +198,29 @@ Item {
     function onCloseRequested(popout) {
       if (popout !== root.surfaceName) return
       tailscalePopup.open = false
-      focusRetry.stop()
       if (root.tailscaleService) root.tailscaleService.setPanelOpen(false)
     }
   }
 
   Ui.PopupCard {
     id: tailscalePopup
-    screen: root.screen
-    animateTransitions: !root.barPopoutController
-      || !root.barPopoutController.dismissImmediately
+    host: root.popoutHost
+    anchorItem: root
+    placement: "anchor"
+    animateTransitions: !root.barPopoutController.dismissImmediately
+      && !root.barPopoutController.switching
     cardWidth: ShellStyle.Metrics.tailscalePopupWidth
     cardHeight: root.popupHeight
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
 
-    margins {
-      top: ShellStyle.Metrics.barHeight + 8
-      right: ShellStyle.Metrics.edgeInset
-    }
-
     onOpenChanged: {
       if (open) {
         root.barPopoutController.activate(root.surfaceName)
         if (root.tailscaleService) root.tailscaleService.setPanelOpen(true)
         root.ensureSelection()
-        focusRetry.restart()
       } else {
-        focusRetry.stop()
         if (root.tailscaleService) root.tailscaleService.setPanelOpen(false)
         root.barPopoutController.release(root.surfaceName)
       }

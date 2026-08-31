@@ -57,3 +57,13 @@
 {{- if eq .chezmoi.hostname "honor" }}
 .ssh/known_hosts
 {{- end }}
+
+{{/* ── fleet secrets file: only hosts flagged secrets=true ──
+     (honor first, 2026-08-22; others carry the encrypted blob in the
+     repo but deploy nothing). Also requires the age identity to exist
+     on this host — without it chezmoi cannot decrypt, so the target
+     must not be scheduled at all. */}}
+{{- $noSecrets := or (not (index $facts "secrets")) (not (stat (joinPath .chezmoi.homeDir ".config/age/age.identity.txt"))) }}
+{{- if $noSecrets }}
+.config/secrets.env
+{{- end }}

@@ -55,6 +55,42 @@ local action_specs = {
         method = "openBluetooth",
         accepted = { bluetooth = true },
     },
+    volume_up = {
+        label = "volume up",
+        target = "osd",
+        method = "volumeUp",
+        accepted = { ok = true },
+    },
+    volume_down = {
+        label = "volume down",
+        target = "osd",
+        method = "volumeDown",
+        accepted = { ok = true },
+    },
+    volume_mute = {
+        label = "volume mute",
+        target = "osd",
+        method = "volumeMute",
+        accepted = { ok = true },
+    },
+    mic_mute = {
+        label = "microphone mute",
+        target = "osd",
+        method = "micMute",
+        accepted = { ok = true },
+    },
+    brightness_up = {
+        label = "brightness up",
+        target = "osd",
+        method = "brightnessUp",
+        accepted = { ok = true },
+    },
+    brightness_down = {
+        label = "brightness down",
+        target = "osd",
+        method = "brightnessDown",
+        accepted = { ok = true },
+    },
 }
 
 local function append(target, value)
@@ -123,11 +159,22 @@ function quickshell_control.new(options)
         }
     end
 
-    local function selected_instance_present(stdout, exit_code)
+    local function selected_instance_pid(stdout, exit_code)
         if exit_code ~= 0 then return nil end
         local output = tostring(stdout or "")
-        return output:find(config_dir, 1, true) ~= nil
-            and output:match('"pid"%s*:%s*%d+') ~= nil
+        for object in output:gmatch("%b{}") do
+            if object:find(config_dir, 1, true) then
+                local pid = tonumber(object:match('"pid"%s*:%s*(%d+)'))
+                if pid and pid > 1 then return pid end
+            end
+        end
+        return false
+    end
+
+    local function selected_instance_present(stdout, exit_code)
+        local pid = selected_instance_pid(stdout, exit_code)
+        if pid == nil then return nil end
+        return pid ~= false
     end
 
     local function start_selected_config(spec)
@@ -194,6 +241,42 @@ function quickshell_control.new(options)
                 return
             end
             if not present then start_selected_config(nil) end
+        end)
+    end
+
+    -- Awesome reload re-runs rc.lua while a daemonized Quickshell can keep
+    -- serving the previous QML. Replace that selected process so a WM restart
+    -- is a desktop reload, not only a window-manager reload.
+    function controller:restart_selected()
+        awful.spawn.easy_async(list_command(), function(stdout, stderr, reason, exit_code)
+            local pid = selected_instance_pid(stdout, exit_code)
+            if pid == nil then
+                report("Quickshell restart unavailable",
+                    "Could not inspect the selected configuration ("
+                    .. detail(stderr, reason, exit_code) .. ")")
+                return
+            end
+            if not pid then
+                start_selected_config(nil)
+                return
+            end
+
+            awful.spawn({ "kill", "-TERM", tostring(pid) }, false)
+            gears.timer.start_new(retry_delay, function()
+                awful.spawn.easy_async(list_command(), function(stdout2, stderr2, reason2, exit_code2)
+                    local remaining = selected_instance_pid(stdout2, exit_code2)
+                    if type(remaining) == "number" then
+                        awful.spawn({ "kill", "-KILL", tostring(remaining) }, false)
+                        gears.timer.start_new(0.2, function()
+                            start_selected_config(nil)
+                            return false
+                        end)
+                        return
+                    end
+                    start_selected_config(nil)
+                end)
+                return false
+            end)
         end)
     end
 

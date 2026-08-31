@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "../../style" as ShellStyle
+import "../../ui" as Ui
 
 Item {
   id: root
@@ -75,7 +76,7 @@ Item {
     sessionActions.cancelConfirmation()
     selectedIndex = 0
     open = true
-    focusRetry.restart()
+    focusRetry.begin()
     return true
   }
 
@@ -129,11 +130,10 @@ Item {
     }
   }
 
-  Timer {
+  Ui.WindowFocusRetry {
     id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
+    panel: sessionWindow
+    onSucceeded: root.focusKeyboardItem()
   }
 
   Connections {
@@ -162,7 +162,7 @@ Item {
     implicitWidth: 420
     implicitHeight: 310
 
-    onVisibleChanged: if (visible && root.open) focusRetry.restart()
+    onVisibleChanged: if (visible && root.open) focusRetry.begin()
 
     Binding {
       target: sessionWindow.contentItem ? sessionWindow.contentItem.Window.window : null

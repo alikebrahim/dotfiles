@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../../style" as ShellStyle
+import "../../ui" as Ui
 import "CalendarModel.js" as CalendarModel
 
 Item {
@@ -9,9 +10,9 @@ Item {
 
   property var screen: null
   required property QtObject barPopoutController
+  property var popoutHost: null
   property bool barVisible: true
   property bool open: false
-  property real cardOpacity: open ? 1 : 0
   property date today: new Date()
   property int viewYear: today.getFullYear()
   property int viewMonth: today.getMonth()
@@ -51,14 +52,6 @@ Item {
   readonly property int gridWidth: weekColumnWidth + gutterWidth
     + cellSpacing * 2 + cellWidth * 7 + cellSpacing * 6
 
-  Behavior on cardOpacity {
-    enabled: !root.barPopoutController.dismissImmediately
-    NumberAnimation {
-      duration: ShellStyle.Metrics.animationMs
-      easing.type: Easing.OutCubic
-    }
-  }
-
   function goToToday() {
     viewYear = today.getFullYear()
     viewMonth = today.getMonth()
@@ -80,8 +73,8 @@ Item {
 
   function requestKeyboardFocus() {
     if (!open) return
-    var windowObject = calendarWindow.contentItem
-      ? calendarWindow.contentItem.Window.window
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
       : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
@@ -94,13 +87,11 @@ Item {
     today = clock.date
     goToToday()
     open = true
-    focusRetry.restart()
     return true
   }
 
   function closeCalendar() {
     open = false
-    focusRetry.stop()
     barPopoutController.release(surfaceName)
     return true
   }
@@ -138,22 +129,11 @@ Item {
     }
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: calendarActivation
-    target: calendarWindow.contentItem ? calendarWindow.contentItem.Window.window : null
-
-    function onActiveChanged() {
-      var windowObject = calendarActivation.target
-      if (!root.open || !windowObject) return
-      root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.focusKeyboardItem)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (root.open) root.focusKeyboardItem()
     }
   }
 
@@ -186,49 +166,23 @@ Item {
     }
   }
 
-  PanelWindow {
-    id: calendarWindow
+  Ui.PopupCard {
+    id: calendarPopup
+    host: root.popoutHost
+    placement: "center"
+    open: root.open
+    animateTransitions: !root.barPopoutController.dismissImmediately
+      && !root.barPopoutController.switching
+    cardWidth: 560
+    cardHeight: contentColumn.implicitHeight + padding * 2
+    cardRadius: ShellStyle.Metrics.cornerRadius
+    cardColor: ShellStyle.Palette.panel
+    borderColor: ShellStyle.Palette.panelBorder
 
-    screen: root.screen
-    visible: (root.open || root.cardOpacity > 0) && root.screen !== null
-    implicitWidth: 560
-    implicitHeight: contentColumn.implicitHeight + ShellStyle.Metrics.panelPadding * 2
-    color: "transparent"
-    surfaceFormat.opaque: false
-    focusable: root.open
-    aboveWindows: true
-    exclusionMode: ExclusionMode.Ignore
-    exclusiveZone: 0
-
-    anchors {
-      top: true
-    }
-
-    margins {
-      top: ShellStyle.Metrics.barHeight + ShellStyle.Metrics.panelGap
-    }
-
-    onVisibleChanged: if (visible && root.open) focusRetry.restart()
-
-    Binding {
-      target: calendarWindow.contentItem.Window.window
-      property: "title"
-      value: "quickshell-calendar"
-      when: calendarWindow.contentItem.Window.window !== null
-    }
-
-    Rectangle {
+    Item {
+      id: keyboardFocus
       anchors.fill: parent
-      opacity: root.cardOpacity
-      radius: ShellStyle.Metrics.cornerRadius
-      color: ShellStyle.Palette.panel
-      border.width: 2
-      border.color: ShellStyle.Palette.panelBorder
-
-      Item {
-        id: keyboardFocus
-        anchors.fill: parent
-        focus: true
+      focus: true
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
@@ -263,9 +217,7 @@ Item {
 
       Column {
         id: contentColumn
-        x: ShellStyle.Metrics.panelPadding
-        y: ShellStyle.Metrics.panelPadding
-        width: parent.width - ShellStyle.Metrics.panelPadding * 2
+        width: parent.width
         spacing: ShellStyle.Metrics.rowGap
 
         Item {
@@ -576,6 +528,5 @@ Item {
           font.pixelSize: ShellStyle.Metrics.captionSize
         }
       }
-    }
   }
 }

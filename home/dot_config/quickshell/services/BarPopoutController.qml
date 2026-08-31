@@ -7,6 +7,7 @@ Item {
   property string activePopout: ""
   property bool activePopoutFocused: false
   property bool dismissImmediately: false
+  property bool switching: false
 
   visible: false
 
@@ -24,14 +25,23 @@ Item {
     }
 
     var previous = activePopout
+    if (previous) {
+      // Keep the shared overlay mapped. The outgoing card snaps away; the
+      // incoming card fades and slides in without an X11 unmap/remap.
+      switching = true
+      activePopoutFocused = false
+      closeRequested(previous)
+      switching = false
+    }
+
     activePopout = requested
     activePopoutFocused = false
     modalController.activate(umbrellaSurface)
-    if (previous) closeRequested(previous)
     return true
   }
 
   function release(popout) {
+    if (switching) return false
     if (activePopout !== String(popout || "")) return false
     activePopout = ""
     activePopoutFocused = false
@@ -46,7 +56,10 @@ Item {
       return false
     }
     if (!activePopoutFocused) return false
-    return closeActive(true)
+    // Focus loss must close in place (same fade as ESC), not an instant
+    // unmap. An instant unmap leaves the card visible when the overlay
+    // unmounts, exposing Picom's close animation (diagonal-toward-center).
+    return closeActive()
   }
 
   function closeActive(immediate) {

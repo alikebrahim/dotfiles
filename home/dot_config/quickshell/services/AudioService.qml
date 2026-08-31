@@ -126,8 +126,7 @@ Item {
   }
 
   function isPlaybackStream(node) {
-    return Boolean(node && node.isStream === true && node.isSink === true
-      && nodeName(node).indexOf("omarchy_speaker_tuning") !== 0)
+    return Boolean(node && node.isStream === true && node.isSink === true)
   }
 
   function isCaptureStream(node) {
@@ -136,11 +135,21 @@ Item {
     return name !== "quickshell" && name.indexOf("quickshell-") !== 0
   }
 
+  function trackedCaptureNodes() {
+    if (!useNativeBackend) return []
+    var tracked = []
+    for (var i = 0; i < nativeNodes.length; i++) {
+      var node = nativeNodes[i]
+      if (isCaptureStream(node)) tracked.push(node)
+    }
+    return tracked
+  }
+
   function activeCaptureStreamCount() {
     var count = 0
     for (var i = 0; i < nativeNodes.length; i++) {
       var node = nativeNodes[i]
-      if (isCaptureStream(node) && (!node.audio || !node.audio.muted)) count++
+      if (isCaptureStream(node) && node.audio && !node.audio.muted) count++
     }
     return count
   }
@@ -289,6 +298,10 @@ Item {
     }
   }
 
+  function isVolumeKind(kind) {
+    return kind === "output-volume" || kind === "input-volume" || kind === "stream-volume"
+  }
+
   function beginMutation(key, kind, node, expected, action) {
     if (!actionsEnabled) {
       error = "Audio controls are locked in read-only mode"
@@ -299,6 +312,20 @@ Item {
       return false
     }
     if (pending) {
+      if (isVolumeKind(kind) && pendingKind === kind && pendingNodeId === nodeId(node)) {
+        pendingKey = String(key)
+        pendingExpected = expected
+        pendingDeadline = Date.now() + mutationTimeoutMs
+        try {
+          action(node)
+        } catch (e) {
+          clearPending()
+          error = "Audio action failed: " + String(e)
+          return false
+        }
+        Qt.callLater(checkPending)
+        return true
+      }
       error = "Audio action already pending: " + pendingKey
       return false
     }
@@ -414,6 +441,10 @@ Item {
     objects: root.useNativeBackend && root.detailOpen ? root.trackedDetailNodes() : []
   }
 
+  PwObjectTracker {
+    objects: root.useNativeBackend ? root.trackedCaptureNodes() : []
+  }
+
   PwNodePeakMonitor {
     id: inputPeakMonitor
     node: root.useNativeBackend && root.detailOpen ? root.defaultInputNode : null
@@ -449,6 +480,16 @@ Item {
 
   Connections {
     target: root.defaultInputNode && root.defaultInputNode.audio ? root.defaultInputNode.audio : null
+    function onMutedChanged() { root.checkPending() }
+    function onVolumesChanged() { root.checkPending() }
+  }
+
+  Connections {
+    target: {
+      if (!root.pending || !root.isVolumeKind(root.pendingKind)) return null
+      var node = root.findNodeById(root.pendingNodeId)
+      return node && node.audio ? node.audio : null
+    }
     function onMutedChanged() { root.checkPending() }
     function onVolumesChanged() { root.checkPending() }
   }

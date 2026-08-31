@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "../../style" as ShellStyle
+import "../../ui" as Ui
 
 Item {
   id: root
@@ -104,7 +105,7 @@ Item {
     searchInput.text = ""
     selectedIndex = 0
     open = true
-    focusRetry.restart()
+    focusRetry.begin()
     Qt.callLater(function() {
       root.clampSelection()
     })
@@ -155,11 +156,10 @@ Item {
     }
   }
 
-  Timer {
+  Ui.WindowFocusRetry {
     id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
+    panel: switcherWindow
+    onSucceeded: root.focusKeyboardItem()
   }
 
   Connections {
@@ -215,7 +215,7 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     exclusiveZone: 0
 
-    onVisibleChanged: if (visible && root.open) focusRetry.restart()
+    onVisibleChanged: if (visible && root.open) focusRetry.begin()
 
     Binding {
       target: switcherWindow.contentItem.Window.window

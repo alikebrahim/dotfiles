@@ -13,6 +13,7 @@ Item {
   property var notificationService: null
   property var dbusOwnershipService: null
   property var barPopoutController: null
+  property var popoutHost: null
   property int selectedTab: 0
   property int selectedIndex: 0
 
@@ -26,9 +27,14 @@ Item {
     ? notificationService.unseenCount
     : 0
 
+  readonly property bool ownedByShell: dbusOwnershipService
+    ? dbusOwnershipService.notificationsOwnedByShell
+    : Boolean(notificationService && notificationService.serverReady)
+
   implicitWidth: visible ? 30 : 0
   implicitHeight: ShellStyle.Metrics.barHeight
-  visible: notificationService !== null && notificationService.serverReady
+  visible: notificationService !== null
+  opacity: ownedByShell ? 1 : 0.48
 
   function ensureSelection() {
     if (activeRows.length === 0) selectedIndex = 0
@@ -66,10 +72,18 @@ Item {
 
   function requestKeyboardFocus() {
     if (!historyPopup.open) return
-    var windowObject = historyPopup.contentItem ? historyPopup.contentItem.Window.window : null
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
+      : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
     else windowObject.requestActivate()
+  }
+
+  function acknowledgeViewed() {
+    if (!notificationService || selectedTab !== 0 || notificationService.unseenCount <= 0)
+      return false
+    return notificationService.markAllSeen()
   }
 
   function openPopup() {
@@ -77,13 +91,12 @@ Item {
     if (barPopoutController) barPopoutController.activate(surfaceName)
     historyPopup.open = true
     ensureSelection()
-    focusRetry.restart()
     return true
   }
 
   function closePopup() {
+    if (historyPopup.open) acknowledgeViewed()
     historyPopup.open = false
-    focusRetry.stop()
     if (barPopoutController) barPopoutController.release(surfaceName)
     return true
   }
@@ -148,38 +161,22 @@ Item {
 
   Ui.PopupToolTip {
     anchorItem: root
-    text: root.notificationService && root.notificationService.doNotDisturb
-      ? "Notifications silenced"
-      : (root.unseenCount > 0 ? root.unseenCount + " new notifications" : "Notifications")
+    text: !root.ownedByShell
+      ? "Notifications not owned by this shell"
+      : (root.notificationService && root.notificationService.doNotDisturb
+        ? "Notifications silenced"
+        : (root.unseenCount > 0 ? root.unseenCount + " new notifications" : "Notifications"))
     shown: indicatorHover.hovered && !historyPopup.open
+    barPopoutController: root.barPopoutController
     delay: 500
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: historyActivation
-    target: historyPopup.contentItem ? historyPopup.contentItem.Window.window : null
-
-    function onActiveChanged() {
-      var windowObject = historyActivation.target
-      if (!historyPopup.open || !windowObject) return
-      if (root.barPopoutController)
-        root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.focusKeyboardItem)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (historyPopup.open) root.focusKeyboardItem()
     }
-  }
-
-  Binding {
-    target: historyPopup.contentItem ? historyPopup.contentItem.Window.window : null
-    property: "title"
-    value: "quickshell-notification-history"
-    when: target !== null
   }
 
   Connections {
@@ -188,34 +185,31 @@ Item {
 
     function onCloseRequested(popout) {
       if (popout !== root.surfaceName) return
+      if (historyPopup.open) root.acknowledgeViewed()
       historyPopup.open = false
-      focusRetry.stop()
     }
   }
 
   Ui.PopupCard {
     id: historyPopup
-    screen: root.screen
+    host: root.popoutHost
+    anchorItem: root
+    placement: "anchor"
     animateTransitions: !root.barPopoutController
-      || !root.barPopoutController.dismissImmediately
+      || (!root.barPopoutController.dismissImmediately
+        && !root.barPopoutController.switching)
     cardWidth: ShellStyle.Metrics.notificationHistoryWidth
     cardHeight: ShellStyle.Metrics.notificationHistoryHeight
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
 
-    margins {
-      top: ShellStyle.Metrics.barHeight + ShellStyle.Metrics.edgeInset
-      right: ShellStyle.Metrics.edgeInset
-    }
-
     onOpenChanged: {
       if (open) {
         if (root.barPopoutController) root.barPopoutController.activate(root.surfaceName)
         root.ensureSelection()
-        focusRetry.restart()
       } else {
-        focusRetry.stop()
+        if (root.selectedTab === 0) root.acknowledgeViewed()
         if (root.barPopoutController) root.barPopoutController.release(root.surfaceName)
       }
     }
@@ -230,7 +224,13 @@ Item {
       }
       onActivateRequested: root.activateSelection()
       onTabRequested: function(direction) {
-        root.switchTab((root.selectedTab + (direction < 0 ? 1 : -1)) % 2)
+        root.switchTab((root.selectedTab + direction + 2) % 2)
+      }
+      onTextKey: function(text) {
+        var key = String(text || "").toLowerCase()
+        if (!root.notificationService) return
+        if (key === "s") root.notificationService.toggleDoNotDisturb()
+        else if (key === "m") root.notificationService.markAllSeen()
       }
     }
 
@@ -258,7 +258,7 @@ Item {
           Layout.fillWidth: true
           spacing: ShellStyle.Metrics.rowGap
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: root.notificationService && root.notificationService.doNotDisturb
               ? "Allow"
@@ -271,7 +271,7 @@ Item {
               root.notificationService.toggleDoNotDisturb()
           }
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: "Mark seen"
             enabled: root.unseenCount > 0
@@ -279,7 +279,7 @@ Item {
               root.notificationService.markAllSeen()
           }
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: "Clear"
             enabled: root.notificationService
@@ -296,14 +296,14 @@ Item {
           Layout.fillWidth: true
           spacing: ShellStyle.Metrics.rowGap
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: "New " + String(root.unseenCount)
             current: root.selectedTab === 0
             onClicked: root.switchTab(0)
           }
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: "Past " + String(root.notificationService
               ? root.notificationService.seenRows.length

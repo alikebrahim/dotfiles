@@ -29,8 +29,14 @@ export PATH="/usr/local/go/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
 ## PYENV
 export PYENV_ROOT="$HOME/.pyenv"
-command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
+# Init only when pyenv actually exists — absent pyenv is a silent no-op
+# (prevents command-not-found output breaking p10k instant-prompt).
+if (( ${+commands[pyenv]} )); then
+  eval "$(pyenv init -)"
+elif [[ -x "$PYENV_ROOT/bin/pyenv" ]]; then
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init -)"
+fi
 ## NVM
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -303,3 +309,8 @@ alias dot-apply='chezmoi apply --exclude=scripts'
 alias dot-edit='chezmoi edit'
 alias dot-status='chezmoi status'
 chx() { chezmoi add "$@" && chezmoi edit "$@"; }
+
+# mise — activates wherever mise exists; silent no-op elsewhere
+if (( ${+commands[mise]} )); then
+  eval "$(mise activate zsh)"
+fi

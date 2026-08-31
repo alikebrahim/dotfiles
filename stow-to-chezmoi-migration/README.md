@@ -4,7 +4,15 @@ Analysis, research, design, and planning project for migrating `~/.dotfiles`
 from the current GNU Stow + `configure-host.sh` architecture to
 [chezmoi](https://www.chezmoi.io/).
 
-**Status (2026-08-22): Phase 3 complete on minisforoum (design/09),
+**Status (2026-08-22): HONOR IN PROGRESS.** Phase-A tree adaptation done
+(honor's Termux blocks adopted fleet-wide behind $PREFIX guards, all
+inert elsewhere; pyenv guard; extended-keys fix; secrets.env sourcing
+line). One fleet age identity decided (2026-08-22): recipient in
+`.chezmoidata.toml [age]`, encrypted_private_secrets.env carries
+BRAVE_API_KEY, honor-only initially; identity off-repo.
+**Gate: netmaster:dotfiles.git stale (head 242436e Aug 18, no home/) —
+Ali must push the current tree before honor re-clone (Phase C).**
+Phase 3 complete on minisforoum (design/09),
 netmaster (design/10), macbook (design/11). Phase 4 complete on servalws — all
 four run_* scripts activated and green live (record: design/08-phase4-record.md).
 Phase 3 complete — all 130 stow symlinks

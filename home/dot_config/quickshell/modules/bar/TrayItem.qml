@@ -7,6 +7,7 @@ Item {
   id: root
 
   required property var trayItem
+  property var barPopoutController: null
 
   readonly property string itemTitle: trayItem
     ? String(trayItem.title || trayItem.id || "Tray item")
@@ -95,6 +96,7 @@ Item {
       ? root.itemTitle + " — " + root.itemDescription
       : root.itemTitle
     shown: hover.hovered
+    barPopoutController: root.barPopoutController
     delay: 500
   }
 }

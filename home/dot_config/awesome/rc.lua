@@ -242,7 +242,7 @@ if quickshell_bridge_loader then
         )
         if started then
             quickshell_integration_ready = true
-            if quickshell_controller then quickshell_controller:ensure_started() end
+            if quickshell_controller then quickshell_controller:restart_selected() end
         else
             quickshell_bridge = nil
             report_awesome_error("Quickshell bridge failed to start", tostring(start_error))

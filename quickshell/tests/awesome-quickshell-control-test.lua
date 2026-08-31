@@ -1,5 +1,5 @@
 local root = assert(os.getenv("QUICKSHELL_REPO_ROOT"), "QUICKSHELL_REPO_ROOT is required")
-local module = dofile(root .. "/awesome/.config/awesome/lib/quickshell_control.lua")
+local module = dofile(root .. "/home/dot_config/awesome/lib/quickshell_control.lua")
 
 local function joined(values)
     return table.concat(values or {}, "\0")
@@ -137,6 +137,25 @@ assert(not disabled_start:find("QUICKSHELL_ENABLE_MUTATIONS=1", 1, true),
 local already_running = fixture({ { stdout = selected_instance, rc = 0 } }, false)
 already_running.controller:ensure_started()
 assert(#already_running.starts == 0 and #already_running.timers == 0,
-    "startup leaves the selected resident instance untouched")
+    "ensure_started leaves a healthy selected instance untouched")
+
+local restart = fixture({
+    { stdout = selected_instance, rc = 0 },
+    { stdout = "[]\n", rc = 0 },
+}, true)
+restart.controller:restart_selected()
+assert(#restart.starts == 1, "restart sends TERM to the selected pid")
+assert(joined(restart.starts[1].command):find("kill\0-TERM\0" .. "1234", 1, true),
+    "restart targets the listed selected-config pid")
+assert(#restart.timers == 1, "restart waits one readiness delay after TERM")
+restart.timers[1].callback()
+assert(#restart.starts == 2, "restart starts the selected config after the old pid is gone")
+assert(joined(restart.starts[2].command):find("/usr/sbin/quickshell\0--path\0/home/test/.config/quickshell", 1, true),
+    "restart starts exactly the selected configuration")
+
+local first_login = fixture({ { stdout = "[]", rc = 0 } }, false)
+first_login.controller:restart_selected()
+assert(#first_login.starts == 1 and #first_login.timers == 1,
+    "restart on an empty session starts the selected configuration once")
 
 print("ok - Quickshell controller exact-config startup, IPC recovery, and bounded failure")

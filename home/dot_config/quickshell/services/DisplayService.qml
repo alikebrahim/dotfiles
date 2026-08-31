@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 
 // Fixed-profile RandR boundary for this workstation. The service accepts only
 // known profile IDs and delegates one argv-safe request through CommandTransport.
@@ -9,8 +10,12 @@ Item {
 
   readonly property string internalOutput: "eDP-1-1"
   readonly property string externalOutput: "HDMI-0"
-  readonly property string backendPath: "/home/alikebrahim/.config/scripts/x11-display-profile.sh"
+  readonly property string backendPath: {
+    var home = Quickshell.env("HOME")
+    return home ? home + "/.config/scripts/x11-display-profile.sh" : ""
+  }
   readonly property bool actionsEnabled: transport !== null && transport.allowMutations
+  property string currentProfile: ""
   readonly property var profiles: [
     {
       id: "dual",
@@ -89,6 +94,12 @@ Item {
     error = ""
   }
 
+  function refreshCurrent() {
+    if (!backendPath) return false
+    transport.request("display.query", [backendPath, "--query"], false)
+    return true
+  }
+
   function applyConfirmed(profileId) {
     var profile = profileFor(profileId)
     if (busy || !profile || armedProfile !== profile.id) {
@@ -99,11 +110,16 @@ Item {
       error = "Native display changes are disabled"
       return false
     }
+    if (!backendPath) {
+      error = "Display helper is not available"
+      return false
+    }
 
     armedProfile = ""
     pendingProfile = profile.id
     error = ""
     busy = true
+    busyTimeout.restart()
     transport.request(
       "display.apply." + profile.id,
       [backendPath, "--apply", profile.id],
@@ -117,18 +133,46 @@ Item {
     target: root.transport
 
     function onFinished(requestId, key, ok, output, message) {
+      if (key === "display.query") {
+        var match = String(output || "").match(/^current:([A-Za-z]+)/m)
+        var token = match ? match[1] : "unknown"
+        root.currentProfile = root.profileFor(token) ? token : ""
+        if (!ok && message) root.error = String(message)
+        return
+      }
+
       var prefix = "display.apply."
       if (key.indexOf(prefix) !== 0) return
 
       var profileId = key.substring(prefix.length)
       if (profileId !== root.pendingProfile) return
 
+      busyTimeout.stop()
       var detail = ok ? "" : String(message || output || "Display profile failed").trim()
       root.busy = false
       root.pendingProfile = ""
       root.error = detail
-      if (ok) root.lastAppliedProfile = profileId
+      if (ok) {
+        root.lastAppliedProfile = profileId
+        root.currentProfile = profileId
+      }
       root.actionFinished(profileId, ok, detail)
     }
   }
+
+  Timer {
+    id: busyTimeout
+    interval: 10000
+    repeat: false
+    onTriggered: {
+      if (!root.busy) return
+      var profileId = root.pendingProfile
+      root.busy = false
+      root.pendingProfile = ""
+      root.error = "Display profile timed out"
+      root.actionFinished(profileId, false, root.error)
+    }
+  }
+
+  Component.onCompleted: root.refreshCurrent()
 }

@@ -86,6 +86,15 @@ toolset = ""
 desktop = false
 apps = false
 onepassword = false
+secrets = true
+
+# Fleet age encryption (2026-08-22): ONE identity for Ali's machines.
+# Identity file lives off-repo at ~/.config/age/age.identity.txt on each
+# machine that needs to decrypt (honor first). Hosts without the identity
+# ignore encrypted_ targets — .chezmoi.toml.tmpl keys activation on its
+# existence. tima gets her own identity if she ever needs secrets.
+[age]
+recipient = "age14mzxzvqtk63qhy45x8ys6hm7ssj0v8qy7u08xmw603m8kgdwvvqqfru07j"
 wezterm = false
 systemModules = false
 

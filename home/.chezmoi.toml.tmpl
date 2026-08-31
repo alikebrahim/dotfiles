@@ -4,9 +4,17 @@
      becoming known, so .chezmoidata.toml is NOT yet parsed — referencing
      hostFacts here breaks fresh-host bootstrap (caught in Phase-2 smoke).
      All templates read .chezmoidata.toml directly; no [data] mirror.
-     age settings: none yet — when secrets encryption activates (later
-     phase), the [age] section must be added HERE, not by hand. */}}
+     age settings (2026-08-22, one fleet identity): identity lives at
+     ~/.config/age/age.identity.txt per machine, COPIED there manually —
+     never in this repo. Recipient + per-host identification live in
+     .chezmoidata.toml; encryption activates only where it should. */}}
 sourceDir = {{ .chezmoi.sourceDir | quote }}
+{{- if stat (joinPath .chezmoi.homeDir ".config/age/age.identity.txt") -}}
+[age]
+    identity = "/home/{{ .chezmoi.username }}/.config/age/age.identity.txt"
+{{- else }}
+# No fleet age identity on this host — encrypted_ targets are left alone.
+{{- end }}
 
 umask = 0o022
 

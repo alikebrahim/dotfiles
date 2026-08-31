@@ -1,8 +1,8 @@
 import QtQuick
 import "../style" as ShellStyle
 
-// Compact Omarchy-style slider. Changes are previewed locally and committed
-// only on release so native commands are never spammed while dragging.
+// Compact slider. Changes are previewed locally and committed only on release
+// so native commands are never spammed while dragging.
 Item {
   id: root
 

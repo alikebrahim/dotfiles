@@ -1,7 +1,7 @@
 import QtQuick
 import "../style" as ShellStyle
 
-// Hero layout adapted from Omarchy Quattro's audio/network/power panels.
+// Hero layout for audio, network, Bluetooth, power, and brightness panels.
 Item {
   id: root
 

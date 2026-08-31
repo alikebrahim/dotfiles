@@ -17,58 +17,38 @@ This file applies to all agent work inside `~/.dotfiles`.
    - Do not make Git or Syncthing state a prerequisite, validation step, or completion criterion for configuration work.
 
 3. Source edits do not authorize separate live or deployment operations.
-   - Approval to edit files does not authorize process restarts, service reloads, live IPC mutations, Stow deployment, hardware mutations, or changes on other hosts.
+   - Approval to edit files does not authorize process restarts, service reloads, live IPC mutations, chezmoi apply, hardware mutations, or changes on other hosts.
    - If an approved source edit is expected to trigger an unavoidable automatic live reload, disclose that effect before editing.
    - Obtain separate explicit authorization for any additional live activation or deployment step.
 
 ## Repository architecture
 
-This repo contains source-of-truth files for personal system configuration. Some files may already be consumed through live symlinks, so identify the intended source and expected live effect before editing.
+This repo contains source-of-truth files for personal system configuration, managed by chezmoi. The chezmoi source state lives in `home/` (scoped via `.chezmoiroot`); chezmoi copies these files into the live home directory (or symlinks them for the `symlink_` families). Identify the intended source and expected live effect before editing.
 
 - Never create absolute symlinks in the repo; they are not portable across hosts. Use relative symlinks only.
 - The user owns all repository history and cross-host propagation. Agent work is limited to authorized content changes and their local, task-relevant validation.
 
-### Stow package model
+### Chezmoi dotfile management
 
-- **GNU Stow 2.3.1** is installed fleet-wide. It has **no `--no-folding` flag** (added in 2.4.0).
-- **Deployment engine is `scripts/configure-host.sh`** (desired-state: tools, catalogued Stow packages, SSH overlay, system/user modules).
-- `scripts/stow-host.sh` is a **narrow compatibility wrapper** around `configure-host.sh --scope stow` only. Prefer `configure-host.sh` for full host setup.
-- Stow packages must be registered in `scripts/lib/stow-catalog.sh` and listed in `scripts/profiles/common.conf` and/or host `PROFILE_EXTRA_STOW_PACKAGES`.
-- Per-host SSH config overlays use `--dir=ssh` (e.g., `ssh/netmaster/`, `ssh/servalws/`).
-- Per-host tmux themes use base `tmux-remote/` + overlay `tmux-remote-HOST/` packages.
-- Run `bash ~/.dotfiles/scripts/configure-host.sh plan` before an explicitly authorized `apply`.
-- Safe apply uses simulate-then-restow; `--adopt` / `--force` are refused. Explicit unstow is `configure-host prune --stow-package NAME` (double confirm).
-- Host-configuration health: `bash ~/.dotfiles/scripts/configure-host.sh doctor`
+- Source of truth: `~/.dotfiles/home/` (chezmoi source state via `.chezmoiroot`). Live files are **copies, one-way** (source → target): editing a live file (e.g. `~/.zshrc`) does NOT update the repo.
+- **Authoring:** edit `~/.dotfiles/home/...` (e.g. `home/dot_zshrc`) — the source IS the file to edit — then `chezmoi apply` propagates to this host; Syncthing carries it to other hosts (`chezmoi apply` there).
+- **Editing from `~`:** `chezmoi edit <target>` (opens the source file), `chezmoi edit --apply <target>` (applies on save), `chezmoi edit --watch <target>` (applies on every save).
+- **Live-edit reflex (the R1 footgun):** if a live file was edited directly, adopt it back with `chx <target>` (`chezmoi add` + `chezmoi edit`; alias defined in the zshrc) or `chezmoi re-add` for everything at once. Never assume a live edit reached the repo.
+- **Deployment:** `chezmoi apply` is a live deployment step on the current host — requires explicit user authorization. Prefer `chezmoi diff` review first; `chezmoi verify` is read-only; `chezmoi status` shows source/target drift.
+- **Forbidden:** `chezmoi update` (runs `git pull`; distribution is Syncthing and git is user-owned). Never call chezmoi from inside chezmoi scripts.
+- **Per-host variance:** templates (`*.tmpl`) and per-machine `[data]` in `~/.config/chezmoi/chezmoi.toml`; never hardcode host paths in shared plain files.
+- **`symlink_` families** (wezterm, awesome, quickshell, awesome_wm_scripts, flameshot, and `dot_local/bin` where applicable) are installed as symlinks: editing the repo file is already live on the host.
 
-### Tree folding — critical hazard
+### my-bin / dot_local/bin boundaries
 
-GNU Stow "tree-folds" when the target directory contains only content from one package. Instead of creating individual file symlinks, Stow replaces the entire target directory with a single symlink pointing into the repo.
-
-If `~/.local` gets tree-folded to `.dotfiles/my-bin/.local`, then per-host runtime data (`~/.local/state/`, `~/.local/share/`) physically enters the dotfiles source tree. This contaminates configuration packages with host-local state such as npm data, Neovim plugins, and uv Python environments.
-
-**Prevention (already in place):**
-- `my-bin/.stow-local-ignore` excludes `.local/share` and `.local/state` from Stow.
-- `configure-host` / Stow helpers create `~/.local/state/` (and related safety dirs) as real directories before stowing, preventing tree folding.
-- Stow apply refuses to continue if `~/.local` (or other safety paths) is already a symlink (tree-folded).
-- `scripts/check-fold.sh` diagnoses folding on the current host and can fix it with `--fix`; the user coordinates its use elsewhere.
-- `configure-host doctor` and `check` also report fold and host-readiness notes.
-
-### my-bin package boundaries
-
-- `my-bin` contains **only `.local/bin/`** with shared scripts (aiw, note, x11_connections_check, fix-nvidia-suspend.sh).
+- Managed scripts live in `home/dot_local/bin/` as `executable_*` entries (aiw, note, x11_connections_check, fix-nvidia-suspend.sh, ...).
 - `hermes` is not managed by this repo. Each host maintains its own `~/.local/bin/hermes` as a real file pointing to the host-local Hermes venv path.
 - `.local/share/` and `.local/state/` must **never** be in the repo.
-- Host-specific binaries installed to `~/.local/bin/` (e.g., `uv`, `ente`, `pip install --user`) remain real host-local files alongside managed symlinks.
+- Host-specific binaries installed to `~/.local/bin/` (e.g., `uv`, `ente`, `pip install --user`) remain real host-local files alongside managed entries.
 
-### stow -R failure mode
+### Source-state deletion and migration
 
-`stow -R` (restow) does **delete-then-create**. If the create phase hits a real file conflict (a non-symlink file in the target that matches a repo file), it aborts — leaving the deleted symlinks uncreated. This silently removes access to scripts.
-
-**Before recommending `stow -R my-bin`**, inspect the current host for real files in `~/.local/bin/` matching package paths. Stop and report any conflict; never work around it with `--adopt` or `--force`.
-
-### Package deletion and migration
-
-Do not delete or reorganize package paths without explicit authorization and an approved migration plan. Explain possible symlink and host impact, but do not inspect or coordinate other hosts; cross-host verification and propagation are the user's responsibility.
+Do not delete or reorganize chezmoi source entries (rename/remove source files, flip `symlink_`/`create_`/`encrypted_` attributes) without explicit authorization and an approved migration plan. Explain the target-path and live-host impact, but do not inspect or coordinate other hosts; cross-host verification and propagation are the user's responsibility.
 
 ### zotac-box dual-user setup
 
@@ -76,7 +56,7 @@ zotac-box has two users:
 - `alikebrahim` (uid 1001): primary, dotfiles at `/home/alikebrahim/.dotfiles`
 - `tima` (uid 1000): secondary, accesses dotfiles via symlink through `shared` group
 
-The `stow-host.sh` / `configure-host.sh` path detects hostname for package lists; zotac-box profile also branches on the running user for SSH overlay and extras. Both users get the same core package list. tima's `~/.local/state/` must be a real dir (the safety check in the Stow helpers handles this).
+Both users run chezmoi against the same source state; chezmoi `apply` only *reads* the source. Each user has their own `~/.config/chezmoi/chezmoi.toml` (own `[data]`), `chezmoistate.boltdb`, and age identity. Per-user selection is handled by `.chezmoi.username` conditionals in templates and `.chezmoiignore`.
 
 ## General dotfiles workflow
 
@@ -84,8 +64,8 @@ The `stow-host.sh` / `configure-host.sh` path detects hostname for package lists
 - Preserve existing structure, comments, and conventions unless the user asks for cleanup/refactoring.
 - Avoid baking machine-specific choices into shared configs unless the user says that package is machine-specific.
 - Prefer shared defaults plus machine-local overrides for per-host state, themes, and selections.
-- Be careful with Stow packages: package directory names matter because existing symlinks may point into them.
-- Do not rename, delete, or reorganize Stow packages without calling out the migration impact first.
+- Be careful with chezmoi source file names: the `dot_`/`private_`/`executable_`/`symlink_`/`create_` prefixes and `.tmpl` suffix encode the target path and behavior — renaming affects the live target.
+- Do not rename, delete, or reorganize source-state entries without calling out the target-path and live-host impact first.
 - Do not assume live files under `$HOME` and repo files are identical; inspect the intended source of truth.
 - When adding new files, use conventional casing and names. For agent guidance, use `AGENTS.md` at the repo root.
 
@@ -127,12 +107,12 @@ One approval may cover a clearly described batch of related edits. It does not a
 - Before editing, determine whether the source is live-linked and whether saving it will automatically reload the application. Disclose any expected automatic effect in the proposed batch.
 - By default, do not reload/restart AwesomeWM, Quickshell, services, or sessions; mutate live state through IPC; kill/respawn processes; or change hardware state.
 - Read-only live inspection is allowed when it directly answers the current question and cannot alter the session.
-- Stow or `configure-host` deployment requires explicit authorization. Operate only on the current host, run the relevant `plan`/`check` first, and do not infer readiness of other hosts.
+- `chezmoi apply` requires explicit authorization. Operate only on the current host, review with `chezmoi diff` first, and do not infer readiness of other hosts.
 - The user handles all repository recording and propagation before or after deployment.
 
 ## User preferences learned for this repo
 
-- The user generally uses WezTerm multiplexing locally, not local tmux. Treat the old `tmux/` package as reference unless the user explicitly revives it.
+- The user generally uses WezTerm multiplexing locally, not local tmux. Treat the old `tmux/` directory as reference unless the user explicitly revives it.
 - Remote machines use `tmux-remote` and SSH auto-attach to `ssh_tmux:system`.
 - Remote tmux should stay generic across machines; avoid hardcoded paths such as `/home/pi/...`.
 - Remote tmux/editor clipboard should use OSC52 through WezTerm, not `tmux-yank`, `xclip`, `wl-copy`, or remote GUI clipboard tools.
@@ -172,4 +152,4 @@ Completion does not require a comprehensive test suite, headless integration env
 - Do not remove apparently stale clients/sessions/windows without explicit approval.
 - Do not delete stray-looking files without asking first.
 - Do not overwrite local machine-specific files unless the user identifies them as the intended target.
-- Do not delete or reorganize package paths without an explicitly approved migration scope. Report potential symlink/host impact; the user handles cross-host verification.
+- Do not delete or reorganize chezmoi source entries or repo directories without an explicitly approved migration scope. Report potential target-path/host impact; the user handles cross-host verification.

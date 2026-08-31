@@ -16,6 +16,7 @@ Item {
   property var brightness: null
   property var modalController: null
   property var barPopoutController: null
+  property var popoutHost: null
   property string activeControl: "audio"
   readonly property string surfaceName: "controls"
   readonly property var popoutController: barPopoutController || modalController
@@ -41,8 +42,8 @@ Item {
 
   function requestKeyboardFocus() {
     if (!controlPanel.open) return
-    var windowObject = controlPanel.contentItem
-      ? controlPanel.contentItem.Window.window
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
       : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
@@ -92,7 +93,6 @@ Item {
   }
   function closePanel() {
     controlPanel.open = false
-    focusRetry.stop()
     if (popoutController) popoutController.release(surfaceName)
   }
   function togglePanel() { controlPanel.open ? closePanel() : openPanel() }
@@ -118,21 +118,25 @@ Item {
     BluetoothStatus {
       id: bluetoothStatus
       service: root.bluetooth
+      barPopoutController: root.barPopoutController
       onActivated: root.openControl("bluetooth")
     }
     NetworkStatus {
       id: networkStatus
       service: root.network
+      barPopoutController: root.barPopoutController
       onActivated: root.openControl("network")
     }
     AudioStatus {
       id: audioStatus
       service: root.audio
+      barPopoutController: root.barPopoutController
       onActivated: root.openControl("audio")
     }
     StatusText {
       id: microphoneStatus
       visible: root.audio !== null && root.audio.microphoneInUse
+      barPopoutController: root.barPopoutController
       text: String.fromCodePoint(0xF036C)
       tooltipText: root.audio && root.audio.microphoneInUse
         ? "Microphone in use" + (root.audio.captureStreamCount > 1 ? " · " + root.audio.captureStreamCount + " sources" : "")
@@ -144,35 +148,35 @@ Item {
     BrightnessStatus {
       id: brightnessStatus
       service: root.brightness
+      barPopoutController: root.barPopoutController
       onActivated: root.openControl("brightness")
     }
     PowerStatus {
       id: powerStatus
       service: root.power
+      barPopoutController: root.barPopoutController
       onActivated: root.openControl("power")
     }
   }
 
+  readonly property Item popupAnchor: activeControl === "bluetooth" ? bluetoothStatus
+    : (activeControl === "network" ? networkStatus
+      : (activeControl === "brightness" ? brightnessStatus
+        : (activeControl === "power" ? powerStatus : audioStatus)))
+
   Ui.PopupCard {
     id: controlPanel
-    screen: root.screen
-    animateTransitions: !root.popoutController || !root.popoutController.dismissImmediately
+    host: root.popoutHost
+    anchorItem: root.popupAnchor
+    placement: "anchor"
+    animateTransitions: !root.popoutController
+      || (!root.popoutController.dismissImmediately
+        && !root.popoutController.switching)
     cardWidth: ShellStyle.Metrics.popupWidth
     cardHeight: panelContent.implicitHeight + padding * 2
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
-
-    anchors {
-      top: true
-      left: false
-      right: true
-    }
-    margins {
-      top: ShellStyle.Metrics.barHeight + 8
-      left: 0
-      right: ShellStyle.Metrics.edgeInset
-    }
 
     onOpenChanged: {
       root.syncAudioDetailLifecycle()
@@ -181,14 +185,10 @@ Item {
       if (open) {
         if (root.popoutController) root.popoutController.activate(root.surfaceName)
         panelContent.refreshActive()
-        focusRetry.restart()
       } else if (root.popoutController) {
-        focusRetry.stop()
         root.popoutController.release(root.surfaceName)
       }
     }
-
-    onVisibleChanged: if (visible && open) focusRetry.restart()
 
     Ui.KeyboardNavigator {
       id: keyboardNavigator
@@ -203,7 +203,7 @@ Item {
       onTextKey: function(text) { panelContent.handleTextKey(text) }
     }
 
-    OmarchyControlContent {
+    ControlContent {
       id: panelContent
       anchors.fill: parent
       activeControl: root.activeControl
@@ -216,22 +216,11 @@ Item {
     }
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: controlActivation
-    target: controlPanel.contentItem ? controlPanel.contentItem.Window.window : null
-
-    function onActiveChanged() {
-      var windowObject = controlActivation.target
-      if (!controlPanel.open || !windowObject || !root.popoutController) return
-      root.popoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(keyboardNavigator.forceActiveFocus)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (controlPanel.open) root.focusKeyboardItem()
     }
   }
 
@@ -258,7 +247,8 @@ Item {
     function openNetwork(): string { root.showControl("network"); return "network" }
     function openBluetooth(): string { root.showControl("bluetooth"); return "bluetooth" }
     function openPower(): string { root.showControl("power"); return "power" }
-    function openDisplay(): string { root.showControl("brightness"); return "brightness" }
+    function openBrightness(): string { root.showControl("brightness"); return "brightness" }
+    function openDisplay(): string { return openBrightness() }
 
     function status(): string {
       return JSON.stringify({

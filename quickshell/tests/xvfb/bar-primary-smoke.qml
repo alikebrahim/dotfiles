@@ -83,8 +83,8 @@ ShellRoot {
         && bar.systemControls.screen === bar.controlPopupScreen,
         "control popouts consume an explicit bar-owned screen instead of the focused-client screen")
       root.expect(bar.surfaceCount === 1, "only one bar surface exists")
-      root.expect(bar.color.a > 0, "bar uses one continuous Omarchy background surface")
-      root.expect(bar.panelSize === 26, "bar uses Omarchy's horizontal size token")
+      root.expect(bar.color.a > 0, "bar uses one continuous background surface")
+      root.expect(bar.panelSize === 26, "bar uses the 26px horizontal size token")
       root.expect(bar.tagCount === 2, "Awesome tags are rendered")
       root.expect(bar.focusedTitle === "Bridge-selected title", "focused title comes from the bridge")
       root.expect(bar.clockText.length > 0, "clock renders text")

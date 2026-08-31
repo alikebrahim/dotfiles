@@ -8,6 +8,7 @@ Item {
   property Item anchorItem: parent
   property string text: ""
   property bool shown: false
+  property var barPopoutController: null
   property int delay: 500
   property int maxWidth: 320
   property bool delayedShown: false
@@ -17,9 +18,12 @@ Item {
   implicitWidth: 0
   implicitHeight: 0
 
+  readonly property bool popoutBlocks: barPopoutController
+    && barPopoutController.activePopout !== ""
+
   function updateVisibility() {
     showDelay.stop()
-    if (!shown || text === "") {
+    if (!shown || text === "" || popoutBlocks) {
       delayedShown = false
     } else if (delay <= 0) {
       delayedShown = true
@@ -31,13 +35,14 @@ Item {
   onShownChanged: updateVisibility()
   onTextChanged: updateVisibility()
   onDelayChanged: updateVisibility()
+  onPopoutBlocksChanged: updateVisibility()
   Component.onCompleted: updateVisibility()
 
   Timer {
     id: showDelay
     interval: Math.max(1, root.delay)
     repeat: false
-    onTriggered: root.delayedShown = root.shown && root.text !== ""
+    onTriggered: root.delayedShown = root.shown && root.text !== "" && !root.popoutBlocks
   }
 
   Loader {

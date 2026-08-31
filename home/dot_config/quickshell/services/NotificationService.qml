@@ -33,6 +33,7 @@ Item {
   property bool recoveredFromBackup: false
   property string lastError: ""
   property string pendingSavePayload: ""
+  property string lastGoodPayload: ""
   property var liveRefs: ({})
   property var nativeKeys: ({})
   property var listeners: ({})
@@ -183,6 +184,7 @@ Item {
       return
     }
     hydrateParsedState(parsed)
+    lastGoodPayload = Logic.serializeState(parsed.dnd, parsed.history)
     finishHistoryLoad()
   }
 
@@ -214,6 +216,7 @@ Item {
       return
     }
     hydrateParsedState(parsed)
+    lastGoodPayload = Logic.serializeState(parsed.dnd, parsed.history)
     recoveredFromBackup = true
     lastError = "Notification state recovered from the last-known-good backup"
     finishHistoryLoad()
@@ -239,8 +242,15 @@ Item {
   function flushState() {
     var payload = pendingSavePayload || statePayload()
     pendingSavePayload = ""
+    var parsed = Logic.parseState(payload, historyCap)
+    if (!parsed.ok) {
+      lastError = "Notification state save skipped: " + parsed.error
+      return
+    }
+    if (backupPath && lastGoodPayload)
+      backupFile.setText(lastGoodPayload)
     if (statePath) stateFile.setText(payload)
-    if (backupPath) backupFile.setText(payload)
+    lastGoodPayload = payload
   }
 
   function connectIfPresent(notification, signalName, handler) {
@@ -584,6 +594,7 @@ Item {
       var parsed = Logic.parseState(persisted.reloadStateJson, historyCap)
       if (parsed.ok) {
         hydrateParsedState(parsed)
+        lastGoodPayload = Logic.serializeState(parsed.dnd, parsed.history)
         finishHistoryLoad()
       }
     }

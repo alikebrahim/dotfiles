@@ -42,6 +42,7 @@ Ui.X11Panel {
   readonly property alias weatherWidget: weatherWidget
   readonly property alias systemTray: systemTray
   readonly property alias systemControls: systemControls
+  readonly property alias popoutHost: barPopoutHost
 
   signal calendarRequested()
 
@@ -76,6 +77,12 @@ Ui.X11Panel {
     shellState: root.shellState
   }
 
+  Ui.BarPopoutHost {
+    id: barPopoutHost
+    barPopoutController: root.barPopoutController
+    targetScreen: root.resolvedScreen
+  }
+
   Item {
     anchors.fill: parent
     anchors.leftMargin: ShellStyle.Metrics.edgeInset
@@ -105,10 +112,35 @@ Ui.X11Panel {
       }
     }
 
-    Clock {
-      id: clock
-      anchors.centerIn: parent
-      onActivated: root.calendarRequested()
+    Item {
+      id: centerCluster
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      implicitWidth: centerRow.implicitWidth
+      width: centerRow.implicitWidth
+
+      Row {
+        id: centerRow
+        anchors.centerIn: parent
+        height: parent.height
+        spacing: ShellStyle.Metrics.sectionGap
+
+        Clock {
+          id: clock
+          height: parent.height
+          onActivated: root.calendarRequested()
+        }
+
+        WeatherWidget {
+          id: weatherWidget
+          height: parent.height
+          screen: root.controlPopupScreen
+          weatherService: root.weatherService
+          barPopoutController: root.barPopoutController
+          popoutHost: root.popoutHost
+        }
+      }
     }
 
     RowLayout {
@@ -119,19 +151,13 @@ Ui.X11Panel {
       anchors.bottom: parent.bottom
       spacing: ShellStyle.Metrics.controlGap
 
-      WeatherWidget {
-        id: weatherWidget
-        screen: root.controlPopupScreen
-        weatherService: root.weatherService
-        barPopoutController: root.barPopoutController
-      }
-
       TailscaleWidget {
         id: tailscaleWidget
         screen: root.controlPopupScreen
         tailscaleService: root.tailscaleService
         clipboardService: root.clipboardService
         barPopoutController: root.barPopoutController
+        popoutHost: root.popoutHost
       }
 
       NotificationWidget {
@@ -140,6 +166,7 @@ Ui.X11Panel {
         notificationService: root.notificationService
         dbusOwnershipService: root.dbusOwnershipService
         barPopoutController: root.barPopoutController
+        popoutHost: root.popoutHost
       }
 
       MediaWidget {
@@ -147,12 +174,14 @@ Ui.X11Panel {
         screen: root.controlPopupScreen
         mediaService: root.mediaService
         barPopoutController: root.barPopoutController
+        popoutHost: root.popoutHost
       }
 
       SystemTray {
         id: systemTray
         screen: root.controlPopupScreen
         barPopoutController: root.barPopoutController
+        popoutHost: root.popoutHost
       }
 
       Controls.SystemControls {
@@ -165,6 +194,7 @@ Ui.X11Panel {
         brightness: root.brightnessService
         modalController: root.modalController
         barPopoutController: root.barPopoutController
+        popoutHost: root.popoutHost
         visible: root.audioService !== null
           && root.networkService !== null
           && root.bluetoothService !== null

@@ -8,6 +8,7 @@ Item {
   property string text: ""
   property string tooltipText: ""
   property bool available: true
+  property var barPopoutController: null
   readonly property alias tooltipPopupVisible: popupTooltip.popupVisible
   readonly property alias tooltipPopupWindow: popupTooltip.popupWindow
   signal activated()
@@ -44,6 +45,7 @@ Item {
     anchorItem: root
     text: root.tooltipText
     shown: hover.hovered
+    barPopoutController: root.barPopoutController
     delay: 500
   }
 }

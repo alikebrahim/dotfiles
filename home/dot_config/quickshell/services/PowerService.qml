@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell.Services.UPower
 
 Item {
   id: root
@@ -6,6 +7,8 @@ Item {
   required property QtObject transport
   property bool refreshOnStart: true
   property int refreshInterval: 30000
+  property var upowerBackend: UPower
+  property bool useNativeUpower: !(transport && transport.fixtureMode)
 
   property bool present: false
   property int percentage: 0
@@ -16,6 +19,9 @@ Item {
   property string error: ""
   property var responseErrors: ({})
   readonly property bool actionsEnabled: transport && transport.allowMutations
+  readonly property var nativeDisplayDevice: useNativeUpower && upowerBackend
+    ? upowerBackend.displayDevice
+    : null
 
   visible: false
 
@@ -30,8 +36,35 @@ Item {
     error = keys.length > 0 ? next[keys[0]] : ""
   }
 
+  function nativeStateName(device) {
+    if (!device) return "unknown"
+    try {
+      var text = String(UPowerDeviceState.toString(device.state) || "")
+      if (text === "Fully Charged") return "fully-charged"
+      if (text === "Pending Charge") return "pending-charge"
+      if (text === "Pending Discharge") return "pending-discharge"
+      return text ? text.toLowerCase() : "unknown"
+    } catch (e) {
+      return "unknown"
+    }
+  }
+
+  function applyNativeBattery() {
+    if (!useNativeUpower) return
+    var device = nativeDisplayDevice
+    var ready = Boolean(device && device.ready)
+    var laptop = ready && Boolean(device.isLaptopBattery && device.isPresent)
+    present = laptop
+    percentage = laptop ? Math.max(0, Math.min(100, Math.round(Number(device.percentage) * 100))) : 0
+    state = laptop ? nativeStateName(device) : "unknown"
+    onBattery = Boolean(upowerBackend && upowerBackend.onBattery)
+  }
+
   function refresh() {
-    transport.request("power.upower", ["upower", "--dump"], false)
+    if (!useNativeUpower)
+      transport.request("power.upower", ["upower", "--dump"], false)
+    else
+      applyNativeBattery()
     transport.request("power.active", ["tuned-adm", "active"], false)
     transport.request("power.profiles", ["tuned-adm", "list"], false)
   }
@@ -126,6 +159,20 @@ Item {
       else if (key === "power.set-profile") Qt.callLater(root.refresh)
       root.setResponseError(key, parsed ? "" : "invalid state response: " + key)
     }
+  }
+
+  Connections {
+    target: root.nativeDisplayDevice
+    function onReadyChanged() { root.applyNativeBattery() }
+    function onPercentageChanged() { root.applyNativeBattery() }
+    function onStateChanged() { root.applyNativeBattery() }
+    function onIsPresentChanged() { root.applyNativeBattery() }
+    function onIsLaptopBatteryChanged() { root.applyNativeBattery() }
+  }
+
+  Connections {
+    target: root.useNativeUpower ? root.upowerBackend : null
+    function onOnBatteryChanged() { root.applyNativeBattery() }
   }
 
   Timer {

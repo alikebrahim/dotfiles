@@ -497,7 +497,7 @@ ShellRoot {
     onTriggered: {
         root.expect(transport.recordedActions.length === 3, "only non-native fixture actions reach the command transport")
         root.expect(root.recordedCommand(transport.recordedActions, 0) === "tuned-adm profile performance", "Tuned profile action is validated")
-        root.expect(root.recordedCommand(transport.recordedActions, 1) === "brightnessctl set +5%", "brightness uses fixed 5% step")
+        root.expect(root.recordedCommand(transport.recordedActions, 1) === "brightnessctl set 31%", "brightness coalesces to an absolute percent")
         root.expect(root.recordedCommand(transport.recordedActions, 2) === "nm-connection-editor"
           && transport.recordedActions.length > 2 && transport.recordedActions[2].detached,
           "network manager uses the gated detached-launch path")

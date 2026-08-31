@@ -1,7 +1,6 @@
 import QtQuick
 import "../style" as ShellStyle
 
-// X11 adaptation of Omarchy Quattro's shared bordered button treatment.
 Item {
   id: root
 

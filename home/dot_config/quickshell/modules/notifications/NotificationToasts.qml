@@ -7,17 +7,27 @@ PanelWindow {
 
   property var notificationService: null
   property var targetScreen: null
+  property var barPopoutController: null
   property bool suppressed: false
   property int admissionDelayMs: 60
   property int finalUnmapDelayMs: ShellStyle.Metrics.animationMs
   property bool presentationVisible: false
   property real reservedHeight: 1
+  readonly property int maxToastStackHeight: {
+    var count = notificationService ? notificationService.maxVisibleToasts : 4
+    var gap = ShellStyle.Metrics.notificationToastGap
+    var height = ShellStyle.Metrics.notificationToastHeight
+    return Math.max(1, count * height + Math.max(0, count - 1) * gap)
+  }
+  readonly property bool popoutSuppressed: barPopoutController
+    ? barPopoutController.activePopout !== ""
+    : false
   readonly property bool hostReady: notificationService !== null
     && notificationService.serverReady
     && targetScreen !== null
 
   screen: targetScreen
-  visible: hostReady && !suppressed && presentationVisible
+  visible: hostReady && !suppressed && !popoutSuppressed && presentationVisible
   implicitWidth: ShellStyle.Metrics.notificationToastWidth
   implicitHeight: Math.max(1, reservedHeight)
   color: ShellStyle.Palette.transparent
@@ -33,7 +43,7 @@ PanelWindow {
   mask: Region { item: toastColumn }
 
   function hasPresentablePopups() {
-    return hostReady && !suppressed && notificationService.popupCount > 0
+    return hostReady && !suppressed && !popoutSuppressed && notificationService.popupCount > 0
   }
 
   function currentToastHeight() {
@@ -42,7 +52,7 @@ PanelWindow {
 
   function presentSettled() {
     if (!hasPresentablePopups()) return
-    reservedHeight = Math.max(reservedHeight, currentToastHeight())
+    reservedHeight = maxToastStackHeight
     presentationVisible = true
   }
 
@@ -57,9 +67,8 @@ PanelWindow {
 
     if (notificationService.popupCount > 0) {
       finalUnmapTimer.stop()
-      if (presentationVisible)
-        reservedHeight = Math.max(reservedHeight, currentToastHeight())
-      else
+      reservedHeight = maxToastStackHeight
+      if (!presentationVisible)
         admissionTimer.restart()
       return
     }
@@ -74,6 +83,7 @@ PanelWindow {
   onNotificationServiceChanged: synchronizePresentation()
   onTargetScreenChanged: synchronizePresentation()
   onSuppressedChanged: synchronizePresentation()
+  onPopoutSuppressedChanged: synchronizePresentation()
   Component.onCompleted: synchronizePresentation()
 
   Connections {

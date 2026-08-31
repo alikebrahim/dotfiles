@@ -3,9 +3,6 @@ import QtQuick.Layouts
 import "../../ui" as Ui
 import "../../style" as ShellStyle
 
-// Selected C1-C5 controls presented with the same visual grammar as Omarchy
-// Quattro's first-party panel plugins: hero, separator, uppercase section,
-// bordered rows, selected state, and a compact content-fitted layout.
 Item {
   id: root
 
@@ -32,7 +29,7 @@ Item {
     if (activeControl === "network") return "Network"
     if (activeControl === "bluetooth") return "Bluetooth"
     if (activeControl === "power") return "Power"
-    if (activeControl === "brightness") return "Display"
+    if (activeControl === "brightness") return "Brightness"
     return "Audio"
   }
   readonly property var activeService: {
@@ -68,7 +65,7 @@ Item {
     return sections
   }
 
-  implicitHeight: Math.min(panelColumn.implicitHeight, 560)
+  implicitHeight: Math.min(panelColumn.implicitHeight, ShellStyle.Metrics.popupMaxContentHeight)
 
   function audioIcon() {
     if (!audio || audio.muted) return "\ueee8"
@@ -114,7 +111,7 @@ Item {
     if (activeControl === "network") return network && network.connectionName ? network.connectionName : "Network"
     if (activeControl === "bluetooth") return "Bluetooth"
     if (activeControl === "power") return "Battery"
-    if (activeControl === "brightness") return "Display"
+    if (activeControl === "brightness") return "Brightness"
     return "Audio"
   }
 
@@ -397,7 +394,6 @@ Item {
       if (activeControl === "audio") resetAudioCursor()
       else if (activeControl === "network") resetNetworkCursor()
       else if (activeControl === "bluetooth") resetBluetoothCursor()
-      return
     }
     if (activeControl === "audio") {
       if (dy !== 0) moveAudioCursor(dy)
@@ -549,7 +545,7 @@ Item {
 
       Repeater {
         model: root.audio ? root.audio.outputs : []
-        delegate: Ui.OmarchyButton {
+        delegate: Ui.PanelButton {
           required property var modelData
           required property int index
           width: parent.width
@@ -629,7 +625,7 @@ Item {
 
       Repeater {
         model: root.audio ? root.audio.inputs : []
-        delegate: Ui.OmarchyButton {
+        delegate: Ui.PanelButton {
           required property var modelData
           required property int index
           width: parent.width
@@ -765,7 +761,7 @@ Item {
       spacing: ShellStyle.Metrics.rowGap
 
       Ui.PanelSectionHeader { label: "Wi-Fi" }
-      Ui.OmarchyButton {
+      Ui.PanelButton {
         width: parent.width
         iconText: root.networkIcon()
         text: root.network && root.network.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
@@ -901,7 +897,7 @@ Item {
               }
             }
 
-            Ui.OmarchyButton {
+            Ui.PanelButton {
               id: forgetButton
               visible: networkRow.forgetAvailable
               width: ShellStyle.Metrics.controlHeight
@@ -961,14 +957,14 @@ Item {
               spacing: 6
               readonly property real cellWidth: (width - spacing) / 2
 
-              Ui.OmarchyButton {
+              Ui.PanelButton {
                 width: parent.cellWidth
                 text: "Connect"
                 enabled: root.network && root.network.actionsEnabled
                   && !root.network.pending && passphraseField.text.length > 0
                 onClicked: if (root.network) root.network.submitCredentials()
               }
-              Ui.OmarchyButton {
+              Ui.PanelButton {
                 width: parent.cellWidth
                 text: "Cancel"
                 enabled: root.network && !root.network.pending
@@ -979,7 +975,7 @@ Item {
         }
       }
 
-      Ui.OmarchyButton {
+      Ui.PanelButton {
         width: parent.width
         text: "Open connection manager"
         hasCursor: root.cursorActive && root.networkFocusSection === "manager"
@@ -1002,7 +998,7 @@ Item {
       spacing: ShellStyle.Metrics.rowGap
 
       Ui.PanelSectionHeader { label: "Adapter" }
-      Ui.OmarchyButton {
+      Ui.PanelButton {
         width: parent.width
         iconText: root.bluetoothIcon()
         text: root.bluetooth && root.bluetooth.powered ? "Turn Bluetooth off" : "Turn Bluetooth on"
@@ -1021,7 +1017,7 @@ Item {
         onClicked: if (root.bluetooth) root.bluetooth.togglePower()
       }
 
-      Ui.OmarchyButton {
+      Ui.PanelButton {
         visible: root.bluetooth && root.bluetooth.available && root.bluetooth.powered
         width: parent.width
         iconText: String.fromCodePoint(0xF0450)
@@ -1163,7 +1159,7 @@ Item {
               }
             }
 
-            Ui.OmarchyButton {
+            Ui.PanelButton {
               id: forgetBluetooth
               visible: bluetoothRow.forgetAvailable
               width: ShellStyle.Metrics.controlHeight
@@ -1220,7 +1216,7 @@ Item {
 
         Repeater {
           model: root.powerProfileChoices
-          delegate: Ui.OmarchyButton {
+          delegate: Ui.PanelButton {
             required property var modelData
             required property int index
             width: parent.cellWidth

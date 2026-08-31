@@ -10,6 +10,7 @@ Item {
 
   property var screen: null
   property var weatherService: null
+  property var popoutHost: null
   required property QtObject barPopoutController
   property bool editingLocation: false
   property string locationQuery: ""
@@ -19,8 +20,8 @@ Item {
   readonly property bool popupOpen: weatherPopup.open
   readonly property alias panel: weatherPopup
   readonly property string barText: {
-    if (!weatherService || !weatherService.configured) return "WX ?"
-    if (!weatherService.hasCurrent) return "WX …"
+    if (!weatherService || !weatherService.configured) return "Set loc"
+    if (!weatherService.hasCurrent) return "…"
     return weatherService.icon + " " + weatherService.temperature + "°"
   }
   readonly property int popupHeight: Math.min(
@@ -30,6 +31,18 @@ Item {
   implicitWidth: Math.max(44, weatherLabel.implicitWidth + 12)
   implicitHeight: ShellStyle.Metrics.barHeight
   visible: weatherService !== null
+  Accessible.role: Accessible.Button
+  Accessible.name: tooltipPopupText
+
+  readonly property string tooltipPopupText: {
+    if (!weatherService || !weatherService.configured)
+      return "Weather · set an explicit location"
+    if (!weatherService.hasCurrent)
+      return weatherService.locationName + " · unavailable"
+    return weatherService.locationName + " · "
+      + weatherService.condition + " · "
+      + weatherService.temperature + weatherService.temperatureUnit
+  }
 
   function openPopup() {
     if (!visible || screen === null) return false
@@ -42,13 +55,11 @@ Item {
       suggestionIndex = 0
       Qt.callLater(function() { locationField.focusEditor() })
     }
-    focusRetry.restart()
     return true
   }
 
   function closePopup() {
     weatherPopup.open = false
-    focusRetry.stop()
     editingLocation = false
     if (weatherService) weatherService.setPanelOpen(false)
     barPopoutController.release(surfaceName)
@@ -66,7 +77,9 @@ Item {
 
   function requestKeyboardFocus() {
     if (!weatherPopup.open) return
-    var windowObject = weatherPopup.contentItem ? weatherPopup.contentItem.Window.window : null
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
+      : null
     if (!windowObject) return
     if (windowObject.active) {
       if (editingLocation) locationField.focusEditor()
@@ -146,34 +159,17 @@ Item {
 
   Ui.PopupToolTip {
     anchorItem: root
-    text: {
-      if (!root.weatherService || !root.weatherService.configured)
-        return "Weather · set an explicit location"
-      if (!root.weatherService.hasCurrent)
-        return root.weatherService.locationName + " · unavailable"
-      return root.weatherService.locationName + " · "
-        + root.weatherService.condition + " · "
-        + root.weatherService.temperature + root.weatherService.temperatureUnit
-    }
+    text: root.tooltipPopupText
     shown: indicatorHover.hovered && !weatherPopup.open
+    barPopoutController: root.barPopoutController
     delay: 500
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: weatherActivation
-    target: weatherPopup.contentItem ? weatherPopup.contentItem.Window.window : null
-    function onActiveChanged() {
-      var windowObject = weatherActivation.target
-      if (!weatherPopup.open || !windowObject) return
-      root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.requestKeyboardFocus)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (weatherPopup.open) root.requestKeyboardFocus()
     }
   }
 
@@ -182,7 +178,6 @@ Item {
     function onCloseRequested(popout) {
       if (popout !== root.surfaceName) return
       weatherPopup.open = false
-      focusRetry.stop()
       root.editingLocation = false
       if (root.weatherService) root.weatherService.setPanelOpen(false)
     }
@@ -200,19 +195,16 @@ Item {
 
   Ui.PopupCard {
     id: weatherPopup
-    screen: root.screen
-    animateTransitions: !root.barPopoutController
-      || !root.barPopoutController.dismissImmediately
+    host: root.popoutHost
+    anchorItem: root
+    placement: "center"
+    animateTransitions: !root.barPopoutController.dismissImmediately
+      && !root.barPopoutController.switching
     cardWidth: ShellStyle.Metrics.weatherPopupWidth
     cardHeight: root.popupHeight
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
-
-    margins {
-      top: ShellStyle.Metrics.barHeight + 8
-      right: ShellStyle.Metrics.edgeInset
-    }
 
     onOpenChanged: {
       if (open) {
@@ -220,9 +212,7 @@ Item {
         if (root.weatherService) root.weatherService.setPanelOpen(true)
         if (root.weatherService && !root.weatherService.configured)
           root.editingLocation = true
-        focusRetry.restart()
       } else {
-        focusRetry.stop()
         root.editingLocation = false
         if (root.weatherService) root.weatherService.setPanelOpen(false)
         root.barPopoutController.release(root.surfaceName)
@@ -335,7 +325,7 @@ Item {
             onCancelled: root.cancelLocationEdit()
           }
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             text: root.weatherService && root.weatherService.geocoding ? "…" : "SEARCH"
             enabled: root.weatherService && !root.weatherService.geocoding
               && root.locationQuery.trim().length >= 2
@@ -419,7 +409,7 @@ Item {
           }
         }
 
-        Ui.OmarchyButton {
+        Ui.PanelButton {
           visible: root.weatherService && root.weatherService.configured
           text: "CANCEL"
           onClicked: root.cancelLocationEdit()
@@ -563,7 +553,7 @@ Item {
           width: parent.width
           spacing: ShellStyle.Metrics.panelGap
 
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: root.weatherService
               && (root.weatherService.refreshing
@@ -573,7 +563,7 @@ Item {
               && !root.weatherService.forecastRefreshing
             onClicked: root.weatherService.refresh()
           }
-          Ui.OmarchyButton {
+          Ui.PanelButton {
             Layout.fillWidth: true
             text: "CHANGE LOCATION"
             onClicked: root.beginLocationEdit()

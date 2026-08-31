@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "../../style" as ShellStyle
+import "../../ui" as Ui
 
 Item {
   id: root
@@ -77,9 +78,10 @@ Item {
     modalController.activate(surfaceName)
     displayService.cancelConfirmation()
     displayService.clearError()
-    selectedIndex = 0
+    displayService.refreshCurrent()
+    selectedIndex = indexForProfile(displayService.currentProfile)
     open = true
-    focusRetry.restart()
+    focusRetry.begin()
     return true
   }
 
@@ -89,7 +91,7 @@ Item {
     displayService.cancelConfirmation()
     selectedIndex = Math.max(0, Math.min(failedProfileIndex, profiles.length - 1))
     open = true
-    focusRetry.restart()
+    focusRetry.begin()
     return true
   }
 
@@ -151,11 +153,18 @@ Item {
     }
   }
 
-  Timer {
+  Ui.WindowFocusRetry {
     id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
+    panel: displayWindow
+    onSucceeded: root.focusKeyboardItem()
+  }
+
+  Connections {
+    target: root.displayService
+    function onCurrentProfileChanged() {
+      if (!root.open || root.displayService.armedProfile !== "") return
+      root.selectedIndex = root.indexForProfile(root.displayService.currentProfile)
+    }
   }
 
   Timer {
@@ -191,7 +200,7 @@ Item {
     implicitWidth: 570
     implicitHeight: 490
 
-    onVisibleChanged: if (visible && root.open) focusRetry.restart()
+    onVisibleChanged: if (visible && root.open) focusRetry.begin()
 
     Binding {
       target: displayWindow.contentItem ? displayWindow.contentItem.Window.window : null

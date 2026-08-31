@@ -276,16 +276,20 @@ confirms behavior.
    history.
 2. Rewrite `docs/configure-host.md` → `docs/chezmoi.md` operator manual
    (daily commands, new-machine runbook, zotac dual-user section, secrets
-   recovery).
-   **Keys in the repo (user decision 2026-08-19): once the migration is
-   done, Ali will add the SSH keys to the repo — age-encrypted per D4-A —
-   for safekeeping and easy installation on new hosts. Prerequisites this
-   implies: age recipient configured per user; encrypted files land as
-   `encrypted_private_*` (0600 at rest after decryption); the docs must
-   cover the bootstrap path (passphrase-protected `key.txt.age` in the
-   repo + new-host unlock flow) and the zotac-box dual-user wrinkle
-   (per-user recipients, tima ≠ alikebrahim). Not before fleet soak
-   passes — keys enter only after Phase 5 entry gate is green.**
+   recovered).
+   **Secrets + encryption model (updated 2026-08-22, honor trigger):**
+   - Secrets surface: `~/.config/secrets.env` (naming agreed), sourced
+     by `.zprofile` guarded line; stored in tree as
+     `encrypted_private_secrets.env` (0600 at rest after decrypt).
+   - Encryption: ONE fleet-wide age identity (Ali's choice, mirrors the
+     shared SSH key model). Recipient in `.chezmoidata.toml [age]`;
+     identity OFF-repo, copied to machines manually like primary_key.
+     Machines without it carry the encrypted blob harmlessly.
+   - First secret case: BRAVE_API_KEY moved from honor `.zprofile`
+     into secrets.env during honor conversion.
+   - zotac tima gets her own identity if she ever needs secrets.
+   - Earlier framing ("keys enter only after Phase 5 gate") superseded
+     by Ali's 2026-08-22 approval to start with BRAVE_API_KEY on honor.**
    **Lesson (user request 2026-08-19): once the migration is done, walk Ali
    through managing the repo and the tool landscape — chezmoi daily-driver
    commands (apply/status/diff/edit/add, chx), the run_* script system,

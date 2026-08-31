@@ -43,3 +43,29 @@ fi
 
 # Added by Antigravity CLI installer
 export PATH="/home/alikebrahim/.local/bin:$PATH"
+
+# Termux (this phone): always attach to the persistent "main" tmux session.
+# The tmux server keeps running after detach; tmux-continuum auto-saves every
+# 15 min and auto-restores the last state (windows/panes/history/processes)
+# whenever the tmux server starts (device boot via Termux:Boot, or first
+# Termux open after a reboot). Set NO_TMUX=1 to skip auto-attach.
+if [[ -o login ]] && [[ -o interactive ]] && [[ -z "$TMUX" ]] && [[ -n "$PREFIX" ]] && [[ -z "$SSH_TTY" ]] && [[ -z "$NO_TMUX" ]] && (( ${+commands[tmux]} )); then
+  # Keep the tmux server alive after detach (Android otherwise kills Termux)
+  (( ${+commands[termux-wake-lock]} )) && termux-wake-lock >/dev/null 2>&1
+  # '=main' = exact match (plain 'main' would prefix-match e.g. 'main_hold')
+  if ! tmux has-session -t '=main' 2>/dev/null; then
+    tmux new-session -d -s main -c "$HOME"
+  fi
+  tmux attach-session -t '=main' 2>/dev/null || true
+fi
+
+# Secrets (API keys etc.): age-encrypted in the repo, decrypted to 0600 by
+# chezmoi on hosts that have one. Absent file is a silent no-op.
+[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/secrets.env" ] && . "${XDG_CONFIG_HOME:-$HOME/.config}/secrets.env"
+
+# Local API keys (~/.zsh/.env.zsh): plain KEY=value in the repo
+# (dot_zsh/.env.zsh). allexport so the plain assignments become real
+# environment variables for child processes. Absent file is a silent no-op.
+set -a
+[ -f "$HOME/.zsh/.env.zsh" ] && . "$HOME/.zsh/.env.zsh"
+set +a

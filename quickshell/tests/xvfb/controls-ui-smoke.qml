@@ -349,16 +349,16 @@ ShellRoot {
     onTriggered: {
       root.expect(controls.statusCount === 5, "all five status components exist")
       root.expect(controls.microphoneIndicatorVisible, "microphone privacy indicator appears only for an active capture stream")
-      root.expect(controls.audioText !== "" && controls.audioText.indexOf("VOL") === -1, "audio uses an Omarchy icon slot instead of a text badge")
-      root.expect(controls.networkText !== "" && controls.networkText.indexOf("NET") === -1, "network uses an Omarchy icon slot instead of a text badge")
-      root.expect(controls.bluetoothText !== "" && controls.bluetoothText.indexOf("BT") === -1, "Bluetooth uses an Omarchy icon slot instead of a text badge")
-      root.expect(controls.powerText !== "" && controls.powerText.indexOf("BAT") === -1, "power uses an Omarchy icon slot instead of a text badge")
-      root.expect(controls.brightnessText !== "" && controls.brightnessText.indexOf("BRI") === -1, "brightness uses an Omarchy icon slot instead of a text badge")
+      root.expect(controls.audioText !== "" && controls.audioText.indexOf("VOL") === -1, "audio uses an icon slot instead of a text badge")
+      root.expect(controls.networkText !== "" && controls.networkText.indexOf("NET") === -1, "network uses an icon slot instead of a text badge")
+      root.expect(controls.bluetoothText !== "" && controls.bluetoothText.indexOf("BT") === -1, "Bluetooth uses an icon slot instead of a text badge")
+      root.expect(controls.powerText !== "" && controls.powerText.indexOf("BAT") === -1, "power uses an icon slot instead of a text badge")
+      root.expect(controls.brightnessText !== "" && controls.brightnessText.indexOf("BRI") === -1, "brightness uses an icon slot instead of a text badge")
       var hasControlRouting = typeof controls.openControl === "function"
-      root.expect(hasControlRouting, "bar widgets route to their matching Omarchy panel")
+      root.expect(hasControlRouting, "bar widgets route to their matching control panel")
       root.expect(controls.panel.visible && controls.panel.exclusiveZone === 0 && controls.panel.focusable, "control panel is focusable and reserves no workarea")
       root.expect(controls.keyboardNavigator.activeFocus, "control panel transfers keyboard focus to its navigator")
-      root.expect(controls.panel.cardWidth === 380, "Omarchy panel keeps the 380px content width")
+      root.expect(controls.panel.cardWidth === 380, "control panel keeps the 380px content width")
       root.expect(controls.panel.cardHeight > 340 && controls.panel.cardHeight <= 600,
         "complete audio panel is height-capped and scrollable")
       root.expect(controls.panelTitle === "Audio" && controls.activeControl === "audio", "audio widget opens the Audio panel hero")
@@ -371,20 +371,20 @@ ShellRoot {
         return
       }
       controls.keyboardNavigator.dispatchKey(Qt.Key_Right, "", Qt.NoModifier)
-      root.expect(transport.recordedActions.length === 0 && outputAudio.volume === 0.65,
-        "first movement key reveals the keyboard cursor without mutating state")
+      root.expect(transport.recordedActions.length === 0 && Math.abs(outputAudio.volume - 0.70) < 0.001,
+        "first movement key adjusts the focused audio control")
       controls.keyboardNavigator.dispatchKey(Qt.Key_Right, "", Qt.NoModifier)
       Qt.callLater(function() {
-          root.expect(transport.recordedActions.length === 0 && Math.abs(outputAudio.volume - 0.70) < 0.001,
+          root.expect(transport.recordedActions.length === 0 && Math.abs(outputAudio.volume - 0.75) < 0.001,
             "keyboard navigation adjusts native PipeWire audio without a command action")
 
           controls.keyboardNavigator.dispatchKey(Qt.Key_Tab, "", Qt.NoModifier)
-          root.expect(controls.activeControl === "brightness", "Tab switches to the next control in Omarchy bar order")
+          root.expect(controls.activeControl === "brightness", "Tab switches to the next control in bar order")
           controls.keyboardNavigator.dispatchKey(Qt.Key_Right, "", Qt.NoModifier)
           controls.keyboardNavigator.dispatchKey(Qt.Key_Right, "", Qt.NoModifier)
           root.expect(transport.recordedActions.length === 1
-            && transport.recordedActions[0].command.join(" ") === "brightnessctl set +5%",
-            "display panel is keyboard adjustable")
+            && transport.recordedActions[0].command.join(" ") === "brightnessctl set 50%",
+            "brightness panel is keyboard adjustable")
 
           controls.keyboardNavigator.dispatchKey(Qt.Key_Tab, "", Qt.NoModifier)
           root.expect(controls.activeControl === "power", "Tab reaches the Power panel")
@@ -446,7 +446,7 @@ ShellRoot {
       stop()
       externalKeyTimeout.stop()
       var expected = [
-        "brightnessctl set +5%",
+        "brightnessctl set 50%",
         "tuned-adm profile performance"
       ]
       root.expect(controls.activeControl === "network", "real Tab events traversed all control panels")

@@ -244,6 +244,8 @@ ShellRoot {
       expect(notificationService.unseenCount === 1 && notificationService.seenRows.length === 0,
         "passive expiry preserves unseen history")
       expect(expireCalls === 1, "passive expiry releases the fake native object")
+      expect(notificationService.toastTimeout({ urgency: 1, expireTimeout: 0 }) === 0,
+        "expire_timeout 0 never auto-expires")
       notificationService.clearHistory()
       schedule(11)
       return

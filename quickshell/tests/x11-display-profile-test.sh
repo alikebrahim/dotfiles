@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BACKEND="$ROOT/awesome_wm_scripts/.config/scripts/x11-display-profile.sh"
+BACKEND="$ROOT/home/dot_config/scripts/executable_x11-display-profile.sh"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -90,7 +90,8 @@ if [[ "$args" == *" --output eDP-1-1 --mode 1920x1080 --pos 0x0 --output HDMI-0 
     printf 'dual\n' >"$XRANDR_STATE_FILE"
 elif [[ "$args" == *" --output HDMI-0 --mode 1920x1080 --pos 0x0 --primary --output eDP-1-1 --off "* ]]; then
     printf 'external\n' >"$XRANDR_STATE_FILE"
-elif [[ "$args" == *" --output eDP-1-1 --mode 1920x1080 --pos 0x0 --primary --output HDMI-0 --off "* ]]; then
+elif [[ "$args" == *" --output eDP-1-1 --mode 1920x1080 --pos 0x0 --primary --output HDMI-0 --off "* ]] \
+    || [[ "$args" == *" --output eDP-1-1 --mode 1920x1080 --pos 0x0 --primary "* && "$args" != *"HDMI-0"* ]]; then
     printf 'laptop\n' >"$XRANDR_STATE_FILE"
 elif [[ "$args" == *" --output HDMI-0 --mode 1920x1080 --pos 0x0 --primary --output eDP-1-1 --mode 1920x1080 --same-as HDMI-0 "* ]]; then
     printf 'mirror\n' >"$XRANDR_STATE_FILE"
@@ -161,8 +162,21 @@ expect_failure_without_mutation "unknown profile is rejected before xrandr" 2 \
     "$BACKEND" --apply arbitrary
 
 export XRANDR_SCENARIO=missing-external
-expect_failure_without_mutation "missing required output blocks mutation" 1 \
+expect_failure_without_mutation "missing required output blocks dual mutation" 1 \
     "$BACKEND" --apply dual
+printf 'laptop\n' >"$STATE_FILE"
+: >"$COMMAND_LOG"
+if output="$($BACKEND --apply laptop 2>&1)" \
+    && [[ "$output" == "applied:laptop" ]]; then
+    pass "laptop profile applies when the external output is disconnected"
+else
+    fail "laptop profile applies when the external output is disconnected: ${output:-}"
+fi
+if current="$($BACKEND --query 2>&1)" && [[ "$current" == "current:laptop" ]]; then
+    pass "query reports the laptop profile"
+else
+    fail "query reports the laptop profile: ${current:-}"
+fi
 export XRANDR_SCENARIO=missing-mode
 expect_failure_without_mutation "missing required mode blocks mutation" 1 \
     "$BACKEND" --apply dual

@@ -2,7 +2,7 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-  // Omarchy's foundational palette, with the user's taupe accent retained.
+  // Shared shell palette, with the user's taupe accent retained.
   readonly property color transparent: Qt.rgba(0, 0, 0, 0)
   readonly property color foreground: "#cacccc"
   readonly property color background: "#101315"

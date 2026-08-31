@@ -7,6 +7,9 @@ Item {
   id: root
 
   required property QtObject bridge
+  property var audioService: null
+  property var brightnessService: null
+  property real cardOpacity: opened ? 1 : 0
 
   property bool opened: false
   property int eventSerial: 0
@@ -120,6 +123,38 @@ Item {
     opened = false
   }
 
+  function showFromAudio() {
+    if (!audioService) return false
+    return showPayload({
+      type: "volume",
+      value: audioService.volume,
+      muted: audioService.muted,
+      max: 100
+    })
+  }
+
+  function showFromMicrophone() {
+    if (!audioService) return false
+    return showPayload({
+      type: "microphone",
+      muted: audioService.inputMuted,
+      value: audioService.inputVolume,
+      max: 100
+    })
+  }
+
+  function showFromBrightness() {
+    if (!brightnessService || !brightnessService.available) return false
+    var shown = brightnessService.pendingPercent >= 0
+      ? brightnessService.pendingPercent
+      : brightnessService.percentage
+    return showPayload({
+      type: "brightness",
+      value: shown,
+      max: 100
+    })
+  }
+
   Timer {
     id: hideTimer
     interval: root.duration
@@ -133,12 +168,45 @@ Item {
     function close(): string { root.close(); return "ok" }
     function state(): string { return root.opened ? "open" : "closed" }
     function ping(): string { return "ok" }
+    function volumeUp(): string {
+      if (root.audioService && root.audioService.actionsEnabled) root.audioService.volumeUp()
+      return root.showFromAudio() ? "ok" : "invalid"
+    }
+    function volumeDown(): string {
+      if (root.audioService && root.audioService.actionsEnabled) root.audioService.volumeDown()
+      return root.showFromAudio() ? "ok" : "invalid"
+    }
+    function volumeMute(): string {
+      if (root.audioService && root.audioService.actionsEnabled) root.audioService.toggleMute()
+      return root.showFromAudio() ? "ok" : "invalid"
+    }
+    function micMute(): string {
+      if (root.audioService && root.audioService.actionsEnabled) root.audioService.toggleInputMute()
+      return root.showFromMicrophone() ? "ok" : "invalid"
+    }
+    function brightnessUp(): string {
+      if (root.brightnessService && root.brightnessService.actionsEnabled)
+        root.brightnessService.increase()
+      return root.showFromBrightness() ? "ok" : "invalid"
+    }
+    function brightnessDown(): string {
+      if (root.brightnessService && root.brightnessService.actionsEnabled)
+        root.brightnessService.decrease()
+      return root.showFromBrightness() ? "ok" : "invalid"
+    }
+  }
+
+  Behavior on cardOpacity {
+    NumberAnimation {
+      duration: ShellStyle.Metrics.animationMs
+      easing.type: Easing.OutCubic
+    }
   }
 
   PanelWindow {
     id: panel
 
-    visible: root.opened && root.resolvedScreen !== null
+    visible: (root.opened || root.cardOpacity > 0) && root.resolvedScreen !== null
     screen: root.resolvedScreen
     anchors.bottom: true
     margins.bottom: 67
@@ -154,6 +222,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
+      opacity: root.cardOpacity
       radius: ShellStyle.Metrics.cornerRadius
       color: ShellStyle.Palette.panel
       border.width: 2

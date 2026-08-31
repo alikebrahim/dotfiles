@@ -10,6 +10,7 @@ Item {
 
   property var screen: null
   required property QtObject barPopoutController
+  property var popoutHost: null
   property string popupMode: ""
   property var selectedTrayItem: null
   property var menuPath: []
@@ -52,7 +53,6 @@ Item {
 
   function closePopup() {
     trayPopup.open = false
-    focusRetry.stop()
     barPopoutController.release(surfaceName)
   }
 
@@ -61,7 +61,6 @@ Item {
     barPopoutController.activate(surfaceName)
     popupMode = mode
     trayPopup.open = true
-    focusRetry.restart()
     Qt.callLater(ensureSelection)
     return true
   }
@@ -194,7 +193,9 @@ Item {
 
   function requestKeyboardFocus() {
     if (!trayPopup.open) return
-    var windowObject = trayPopup.contentItem ? trayPopup.contentItem.Window.window : null
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
+      : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
     else windowObject.requestActivate()
@@ -219,6 +220,7 @@ Item {
       delegate: TrayItem {
         required property var modelData
         trayItem: modelData
+        barPopoutController: root.barPopoutController
         onPrimaryRequested: function(item) { root.activateTrayItem(item) }
         onMenuRequested: function(item) { root.openMenu(item) }
         onSecondaryRequested: function(item) { root.secondaryActivate(item) }
@@ -263,6 +265,7 @@ Item {
         anchorItem: overflowButton
         text: root.overflowCount + " more tray item" + (root.overflowCount === 1 ? "" : "s")
         shown: overflowHover.hovered
+        barPopoutController: root.barPopoutController
         delay: 500
       }
     }
@@ -273,22 +276,11 @@ Item {
     menu: root.menuPath.length > 0 ? root.menuPath[root.menuPath.length - 1] : null
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: trayActivation
-    target: trayPopup.contentItem ? trayPopup.contentItem.Window.window : null
-
-    function onActiveChanged() {
-      var windowObject = trayActivation.target
-      if (!trayPopup.open || !windowObject) return
-      root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.focusKeyboardItem)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (trayPopup.open) root.focusKeyboardItem()
     }
   }
 
@@ -298,31 +290,26 @@ Item {
     function onCloseRequested(popout) {
       if (popout !== root.surfaceName) return
       trayPopup.open = false
-      focusRetry.stop()
     }
   }
 
   Ui.PopupCard {
     id: trayPopup
-    screen: root.screen
+    host: root.popoutHost
+    anchorItem: root.popupMode === "overflow" ? overflowButton : root
+    placement: "anchor"
     animateTransitions: !root.barPopoutController.dismissImmediately
+      && !root.barPopoutController.switching
     cardWidth: ShellStyle.Metrics.trayMenuWidth
     cardHeight: root.popupHeight
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
 
-    margins {
-      top: ShellStyle.Metrics.barHeight + 8
-      right: ShellStyle.Metrics.edgeInset
-    }
-
     onOpenChanged: {
       if (open) {
         root.barPopoutController.activate(root.surfaceName)
-        focusRetry.restart()
       } else {
-        focusRetry.stop()
         root.barPopoutController.release(root.surfaceName)
       }
     }

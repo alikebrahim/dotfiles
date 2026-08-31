@@ -320,7 +320,10 @@ Item {
     if (Date.now() >= pendingDeadline) {
       var timedOutKey = pendingKey
       var timedOutId = pendingAddress
-      failPending("Bluetooth action timed out: " + timedOutKey, timedOutId)
+      if (pendingStage === "pair")
+        failPending("Pairing needs a system Bluetooth agent for PIN/passkey confirmation", timedOutId)
+      else
+        failPending("Bluetooth action timed out: " + timedOutKey, timedOutId)
       return
     }
 
@@ -376,12 +379,31 @@ Item {
       setError("Open Bluetooth controls before scanning", "")
       return false
     }
+    if (!actionsEnabled) {
+      setError("Bluetooth controls are locked in read-only mode", "")
+      return false
+    }
     if (!powered) {
       setError("Turn Bluetooth on before scanning", "")
       return false
     }
     if (discovering) return true
-    return beginMutation("bluetooth:discovery:start", "discovery", "discovery", null, true)
+    if (!adapter) {
+      setError("No Bluetooth adapter is available", "")
+      return false
+    }
+    try {
+      discoveryAdapter = adapter
+      discoveryOwned = true
+      adapter.discovering = true
+      discoveryStopTimer.restart()
+      return true
+    } catch (e) {
+      discoveryOwned = false
+      discoveryAdapter = null
+      setError("Failed to start Bluetooth discovery: " + String(e), "")
+      return false
+    }
   }
 
   function maybeStartDiscovery() {

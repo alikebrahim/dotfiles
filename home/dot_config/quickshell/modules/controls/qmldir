@@ -5,5 +5,5 @@ NetworkStatus 1.0 NetworkStatus.qml
 BluetoothStatus 1.0 BluetoothStatus.qml
 PowerStatus 1.0 PowerStatus.qml
 BrightnessStatus 1.0 BrightnessStatus.qml
-OmarchyControlContent 1.0 OmarchyControlContent.qml
+ControlContent 1.0 ControlContent.qml
 SystemControls 1.0 SystemControls.qml

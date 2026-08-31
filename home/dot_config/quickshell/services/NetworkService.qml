@@ -215,7 +215,7 @@ Item {
     }
     scanningDevice = wifiDevice
     if (!scanningDevice || scanningDevice.scannerEnabled === undefined) return
-    var requested = detailOpen && wifiEnabled && wifiHardwareEnabled
+    var requested = detailOpen && wifiEnabled && wifiHardwareEnabled && actionsEnabled
     try {
       if (Boolean(scanningDevice.scannerEnabled) !== requested)
         scanningDevice.scannerEnabled = requested
@@ -486,6 +486,7 @@ Item {
     checkPending()
   }
   onWifiHardwareEnabledChanged: updateScanner()
+  onActionsEnabledChanged: updateScanner()
 
   Timer {
     id: detailRefreshDelay
@@ -542,6 +543,7 @@ Item {
 
   Connections {
     target: root.transport
+    function onAllowMutationsChanged() { root.updateScanner() }
     function onFinished(requestId, key, ok, output, message) {
       if (key !== "network.manage") return
       root.errorNetworkId = ""

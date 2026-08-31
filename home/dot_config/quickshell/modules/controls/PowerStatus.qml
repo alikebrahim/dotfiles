@@ -11,5 +11,6 @@ StatusText {
   tooltipText: service && service.present
     ? "Battery — " + service.percentage + "% " + service.state
     : "Battery unavailable"
+  visible: service !== null && service.present
   available: service !== null && service.present
 }

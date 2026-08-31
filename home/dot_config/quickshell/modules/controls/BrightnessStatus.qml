@@ -4,7 +4,12 @@ StatusText {
   id: root
   property var service: null
   text: String.fromCodePoint(0xF0379)
-  tooltipText: service && service.available ? "Brightness — " + service.percentage + "%" : "Brightness unavailable"
+  tooltipText: {
+    if (!service || !service.available) return "Brightness unavailable"
+    var base = "Brightness — " + service.percentage + "%"
+    if (!service.actionsEnabled) return base + " · read-only"
+    return base + " · scroll to change"
+  }
   available: service !== null && service.available
 
   WheelHandler {

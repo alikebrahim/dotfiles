@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 
 Item {
   id: root
@@ -16,6 +17,15 @@ Item {
 
   function dispatchKey(key, text, modifiers) {
     if (blocked) return false
+    if (Window.window && Window.window.activeFocusItem
+        && (Window.window.activeFocusItem instanceof TextInput
+          || Window.window.activeFocusItem instanceof TextEdit)) {
+      if (key === Qt.Key_Escape) {
+        closeRequested()
+        return true
+      }
+      return false
+    }
 
     if (key === Qt.Key_Escape) {
       closeRequested()

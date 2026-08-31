@@ -29,8 +29,14 @@ export PATH="/usr/local/go/bin:$PATH"
 export PATH="$HOME/go/bin:$PATH"
 ## PYENV
 export PYENV_ROOT="$HOME/.pyenv"
-command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
+# Init only when pyenv actually exists — absent pyenv is a silent no-op
+# (prevents command-not-found output breaking p10k instant-prompt).
+if (( ${+commands[pyenv]} )); then
+  eval "$(pyenv init -)"
+elif [[ -x "$PYENV_ROOT/bin/pyenv" ]]; then
+  export PATH="$PYENV_ROOT/bin:$PATH"
+  eval "$(pyenv init -)"
+fi
 ## NVM
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -294,3 +300,12 @@ export PATH=/home/alikebrahim/.opencode/bin:$PATH
 
 # Added by Antigravity CLI installer
 export PATH="/home/alikebrahim/.local/bin:$PATH"
+
+# chezmoi dotfile management (post-stow migration 2026-08-19)
+# chx: adopt a live-edited file back into chezmoi source and open it for
+# editing there — the anti-footgun (design/02; R1 mitigation).
+alias dot='chezmoi'
+alias dot-apply='chezmoi apply --exclude=scripts'
+alias dot-edit='chezmoi edit'
+alias dot-status='chezmoi status'
+chx() { chezmoi add "$@" && chezmoi edit "$@"; }

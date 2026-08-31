@@ -15,7 +15,12 @@ Item {
   property bool available: false
   property string error: ""
   property var responseErrors: ({})
+  property int pendingPercent: -1
+  property int dispatchedPercent: -1
+  property bool writePending: false
+  property bool dispatchScheduled: false
   readonly property bool actionsEnabled: transport && transport.allowMutations
+  readonly property bool pending: writePending || pendingPercent >= 0
 
   visible: false
 
@@ -28,6 +33,11 @@ Item {
     responseErrors = next
     keys = Object.keys(next)
     error = keys.length > 0 ? next[keys[0]] : ""
+  }
+
+  function clampPercent(percent) {
+    var requested = Math.max(1, Math.min(100, Math.round(Number(percent))))
+    return isFinite(requested) ? requested : 0
   }
 
   function refresh() {
@@ -53,23 +63,47 @@ Item {
     return true
   }
 
-  function increase() {
-    if (!available) return false
-    transport.request("brightness.increase", ["brightnessctl", "set", "+5%"], true)
+  function scheduleDispatch() {
+    if (writePending || dispatchScheduled) return
+    dispatchScheduled = true
+    Qt.callLater(function() {
+      root.dispatchScheduled = false
+      root.dispatchSet()
+    })
+  }
+
+  function dispatchSet() {
+    if (!actionsEnabled || writePending) return false
+    var requested = clampPercent(pendingPercent)
+    if (!requested) return false
+    dispatchedPercent = requested
+    writePending = true
+    transport.request("brightness.set", ["brightnessctl", "set", requested + "%"], true)
     return true
   }
 
+  function currentTarget() {
+    return pendingPercent >= 0 ? pendingPercent : percentage
+  }
+
+  function increase() {
+    return setPercentage(currentTarget() + 5)
+  }
+
   function decrease() {
-    if (!available) return false
-    transport.request("brightness.decrease", ["brightnessctl", "set", "5%-"], true)
-    return true
+    return setPercentage(currentTarget() - 5)
   }
 
   function setPercentage(percent) {
     if (!available) return false
-    var requested = Math.max(1, Math.min(100, Math.round(Number(percent))))
-    if (!isFinite(requested)) return false
-    transport.request("brightness.set", ["brightnessctl", "set", requested + "%"], true)
+    if (!actionsEnabled) {
+      setResponseError("brightness.set", "Brightness controls are locked in read-only mode")
+      return false
+    }
+    var requested = clampPercent(percent)
+    if (!requested) return false
+    pendingPercent = requested
+    if (!writePending) scheduleDispatch()
     return true
   }
 
@@ -77,11 +111,26 @@ Item {
     target: root.transport
     function onFinished(requestId, key, ok, output, message) {
       if (!key.startsWith("brightness.")) return
+      if (key === "brightness.set") {
+        root.writePending = false
+        if (!ok) {
+          root.pendingPercent = -1
+          root.setResponseError(key, message)
+          return
+        }
+        if (root.pendingPercent >= 0 && root.pendingPercent !== root.dispatchedPercent) {
+          root.dispatchSet()
+          return
+        }
+        root.pendingPercent = -1
+        root.dispatchedPercent = -1
+        Qt.callLater(root.refresh)
+        root.setResponseError(key, "")
+        return
+      }
       if (!ok) { root.setResponseError(key, message); return }
       var parsed = true
       if (key === "brightness.state") parsed = root.applyState(output)
-      else if (["brightness.increase", "brightness.decrease", "brightness.set"].indexOf(key) !== -1)
-        Qt.callLater(root.refresh)
       root.setResponseError(key, parsed ? "" : "invalid state response: " + key)
     }
   }

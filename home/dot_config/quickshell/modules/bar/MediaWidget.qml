@@ -10,6 +10,7 @@ Item {
 
   property var screen: null
   property var mediaService: null
+  property var popoutHost: null
   required property QtObject barPopoutController
   property int selectedIndex: 1
 
@@ -117,7 +118,9 @@ Item {
 
   function requestKeyboardFocus() {
     if (!mediaPopup.open) return
-    var windowObject = mediaPopup.contentItem ? mediaPopup.contentItem.Window.window : null
+    var windowObject = popoutHost && popoutHost.contentItem
+      ? popoutHost.contentItem.Window.window
+      : null
     if (!windowObject) return
     if (windowObject.active) focusKeyboardItem()
     else windowObject.requestActivate()
@@ -128,13 +131,11 @@ Item {
     barPopoutController.activate(surfaceName)
     mediaPopup.open = true
     ensureSelection()
-    focusRetry.restart()
     return true
   }
 
   function closePopup() {
     mediaPopup.open = false
-    focusRetry.stop()
     barPopoutController.release(surfaceName)
     return true
   }
@@ -204,25 +205,15 @@ Item {
     anchorItem: root
     text: root.displayLabel
     shown: indicatorHover.hovered && !mediaPopup.open
+    barPopoutController: root.barPopoutController
     delay: 500
   }
 
-  Timer {
-    id: focusRetry
-    interval: 80
-    repeat: false
-    onTriggered: root.requestKeyboardFocus()
-  }
-
   Connections {
-    id: mediaActivation
-    target: mediaPopup.contentItem ? mediaPopup.contentItem.Window.window : null
-
-    function onActiveChanged() {
-      var windowObject = mediaActivation.target
-      if (!mediaPopup.open || !windowObject) return
-      root.barPopoutController.reportWindowActive(root.surfaceName, windowObject.active)
-      if (windowObject.active) Qt.callLater(root.focusKeyboardItem)
+    target: root.popoutHost
+    enabled: root.popoutHost !== null
+    function onFocusRequested() {
+      if (mediaPopup.open) root.focusKeyboardItem()
     }
   }
 
@@ -232,33 +223,27 @@ Item {
     function onCloseRequested(popout) {
       if (popout !== root.surfaceName) return
       mediaPopup.open = false
-      focusRetry.stop()
     }
   }
 
   Ui.PopupCard {
     id: mediaPopup
-    screen: root.screen
-    animateTransitions: !root.barPopoutController
-      || !root.barPopoutController.dismissImmediately
+    host: root.popoutHost
+    anchorItem: root
+    placement: "anchor"
+    animateTransitions: !root.barPopoutController.dismissImmediately
+      && !root.barPopoutController.switching
     cardWidth: ShellStyle.Metrics.mediaPopupWidth
     cardHeight: root.popupHeight
     cardRadius: ShellStyle.Metrics.cornerRadius
     cardColor: ShellStyle.Palette.panel
     borderColor: ShellStyle.Palette.panelBorder
 
-    margins {
-      top: ShellStyle.Metrics.barHeight + 8
-      right: ShellStyle.Metrics.edgeInset
-    }
-
     onOpenChanged: {
       if (open) {
         root.barPopoutController.activate(root.surfaceName)
         root.ensureSelection()
-        focusRetry.restart()
       } else {
-        focusRetry.stop()
         root.barPopoutController.release(root.surfaceName)
       }
     }
@@ -366,7 +351,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: ShellStyle.Metrics.rowGap
 
-        Ui.OmarchyButton {
+        Ui.PanelButton {
           width: 48
           iconText: "󰒮"
           enabled: root.controlAvailable(0)
@@ -374,7 +359,7 @@ Item {
           onClicked: root.activateIndex(0)
         }
 
-        Ui.OmarchyButton {
+        Ui.PanelButton {
           width: 56
           iconText: root.activePlayer && root.activePlayer.isPlaying ? "󰏤" : "󰐊"
           enabled: root.controlAvailable(1)
@@ -382,7 +367,7 @@ Item {
           onClicked: root.activateIndex(1)
         }
 
-        Ui.OmarchyButton {
+        Ui.PanelButton {
           width: 48
           iconText: "󰒭"
           enabled: root.controlAvailable(2)
