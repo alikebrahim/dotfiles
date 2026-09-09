@@ -32,3 +32,11 @@ vim.g.python3_host_prog = vim.fn.expand("~/.local/share/nvim/python-provider/bin
 vim.g.loaded_node_provider = 0
 vim.g.loaded_perl_provider = 0
 vim.g.loaded_ruby_provider = 0
+{{- if eq .chezmoi.hostname "thinkpad" }}
+
+-- [[ Omarchy keepers (thinkpad) ]] -- re-applied after the personal options
+-- so the Omarchy LazyVim base keeps its clipboard + format defaults here.
+require("config.remote_clipboard").setup()
+vim.opt.relativenumber = false
+vim.g.autoformat = false
+{{- end }}

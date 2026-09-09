@@ -1,0 +1,64 @@
+# thinkpad (axmi, Omarchy 4.0). Personal key: ~/.ssh/primary_key (key-on-disk,
+# moved out of the 1Password agent 2026-08; same key as servalws per Ali's
+# decision — registered in the fleet authorized_keys fragments).
+# netmaster is reached as the controller user hostmaster; workstations as
+# alikebrahim. git@netmaster (netgit) and github.com use explicit users.
+
+Host netmaster
+    HostName netmaster
+    User hostmaster
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host servalws
+    HostName servalws
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host macbook
+    HostName macbook
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host minisforoum
+    HostName minisforoum
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host zotac-box
+    HostName zotac-box
+    User alikebrahim
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host tima@zotac-box
+    HostName zotac-box
+    User tima
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host thinkpad
+    HostName thinkpad
+    User axmi
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host honor
+    HostName honor
+    Port 8022
+    User u0_a290
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes
+
+Host *
+    IdentityFile ~/.ssh/primary_key
+    IdentitiesOnly yes

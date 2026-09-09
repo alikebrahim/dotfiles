@@ -1,0 +1,16 @@
+#!/bin/bash
+# Ingest Omarchy's post-migration shell.json into the chezmoi source state.
+# Runs after every `omarchy update`: Omarchy migrations rewrite the live
+# shell.json in place, and this hook re-adopts it as the repo source of truth.
+#
+# No git operations here — `chezmoi add` only updates source files on disk.
+# Committing, reviewing, and propagation are user-owned.
+
+set -e
+
+command -v chezmoi >/dev/null 2>&1 || exit 0
+
+CONFIG="$HOME/.config/omarchy/shell.json"
+[[ -f "$CONFIG" ]] || exit 0
+
+chezmoi add "$CONFIG"

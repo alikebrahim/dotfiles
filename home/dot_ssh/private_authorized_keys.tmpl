@@ -9,6 +9,7 @@
 {{- else if eq .chezmoi.hostname "minisforoum" }}{{ $frag = "minisforoum-authorized_keys" }}
 {{- else if eq .chezmoi.hostname "macbook" }}{{ $frag = "macbook-authorized_keys" }}
 {{- else if eq .chezmoi.hostname "honor" }}{{ $frag = "honor-authorized_keys" }}
+{{- else if eq .chezmoi.hostname "thinkpad" }}{{ $frag = "thinkpad-authorized_keys" }}
 {{- else if eq .chezmoi.hostname "zotac-box" -}}
 {{-   if ne .chezmoi.username "tima" }}{{ $frag = "zotac-box-alikebrahim-authorized_keys" }}{{ end }}
 {{- else -}}

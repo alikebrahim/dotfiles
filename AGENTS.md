@@ -39,6 +39,17 @@ This repo contains source-of-truth files for personal system configuration, mana
 - **Per-host variance:** templates (`*.tmpl`) and per-machine `[data]` in `~/.config/chezmoi/chezmoi.toml`; never hardcode host paths in shared plain files.
 - **`symlink_` families** (wezterm, awesome, quickshell, awesome_wm_scripts, flameshot, and `dot_local/bin` where applicable) are installed as symlinks: editing the repo file is already live on the host.
 
+### Omarchy-managed config (thinkpad)
+
+- Omarchy migrations rewrite `~/.config/omarchy/shell.json` in place during
+  `omarchy update`; the repo takes over the whole file, and a post-update hook
+  (`home/dot_config/omarchy/hooks/post-update.d/executable_sync-shell-json.hook`)
+  runs `chezmoi add` after every update to absorb those edits.
+- **Directive: ignore git management.** Never run git operations (in the hook
+  or as an agent) unless the user invokes them explicitly. `chezmoi add` only
+  updates source files on disk; commits, review, and propagation are
+  user-owned.
+
 ### my-bin / dot_local/bin boundaries
 
 - Managed scripts live in `home/dot_local/bin/` as `executable_*` entries (aiw, note, x11_connections_check, fix-nvidia-suspend.sh, ...).

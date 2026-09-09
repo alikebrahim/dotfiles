@@ -67,3 +67,23 @@
 {{- if $noSecrets }}
 .config/secrets.env
 {{- end }}
+
+{{/* ── thinkpad (Omarchy 4.0) ──
+     Omarchy owns ~/.config/hypr, ~/.config/omarchy and ~/.config/tmux on
+     its hosts; here we only take over the hyprland KEYBIND overrides file,
+     the shell.json idle overrides, and remove the Omarchy-seeded tmux XDG
+     config (personal tmux lives at ~/.tmux.conf). Omarchy also owns the
+     nvim theme pipeline, so the repo's kanagawa (theme) plugin spec is
+     skipped on thinkpad. */}}
+{{- if ne .chezmoi.hostname "thinkpad" }}
+.config/hypr
+.config/omarchy
+.config/tmux/tmux.conf
+{{- end }}
+
+{{- if eq .chezmoi.hostname "thinkpad" }}
+.bashrc
+.bash_profile
+.config/nvim/lua/plugins/kanagawa.lua
+.tmux.conf
+{{- end }}

@@ -285,7 +285,7 @@ if [[ -d "$HOME/miniconda3/bin" ]]; then
 fi
 
 # pnpm
-export PNPM_HOME="/home/alikebrahim/.local/share/pnpm"
+export PNPM_HOME="$HOME/.local/share/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME/bin:"*) ;;
   *) export PATH="$PNPM_HOME/bin:$PATH" ;;
@@ -293,13 +293,13 @@ esac
 # pnpm end
 
 # bcode
-export PATH=/home/alikebrahim/.bcode/bin:$PATH
+export PATH="$HOME/.bcode/bin:$PATH"
 
 # opencode
-export PATH=/home/alikebrahim/.opencode/bin:$PATH
+export PATH="$HOME/.opencode/bin:$PATH"
 
 # Added by Antigravity CLI installer
-export PATH="/home/alikebrahim/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # chezmoi dotfile management (post-stow migration 2026-08-19)
 # chx: adopt a live-edited file back into chezmoi source and open it for

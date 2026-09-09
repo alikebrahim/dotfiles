@@ -88,6 +88,20 @@ apps = false
 onepassword = false
 secrets = true
 
+[hostFacts.thinkpad]
+# Omarchy 4.0 desktop (axmi). desktop/apps/onepassword/wezterm/systemModules
+# stay false: Omarchy owns its own desktop stack, terminals, and apps. Only
+# the personal override files listed in .chezmoiignore are managed here.
+tmuxTheme = "blue-matrix"
+uiTheme = "amber-crt"
+toolset = "minimal"
+desktop = false
+apps = false
+onepassword = false
+wezterm = false
+systemModules = false
+secrets = false
+
 # Fleet age encryption (2026-08-22): ONE identity for Ali's machines.
 # Identity file lives off-repo at ~/.config/age/age.identity.txt on each
 # machine that needs to decrypt (honor first). Hosts without the identity

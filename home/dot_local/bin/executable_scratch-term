@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# scratch-term — toggle a floating terminal scratchpad running nvim on a
+# timestamped temp file (/tmp/fileYYYYMMDD-HHMMSS, which `scratch` harvests).
+#
+# Pairs with the window rule + SUPER+` binding in ~/.config/hypr/bindings.lua:
+#   o.window("org.omarchy.scratchterm", { workspace = "special:scratchterm silent", float = true })
+#   o.bind("SUPER + code:49", "Terminal scratchpad", "~/.local/bin/scratch-term")
+
+set -euo pipefail
+
+app_id="org.omarchy.scratchterm"
+workspace="scratchterm"
+
+if ! hyprctl clients -j 2>/dev/null \
+    | jq -e --arg id "$app_id" '.[] | select(.class == $id or .initialClass == $id)' \
+    >/dev/null 2>&1; then
+  file="/tmp/file$(date +%Y%m%d-%H%M%S)"
+  setsid uwsm-app -- xdg-terminal-exec \
+    --app-id="$app_id" \
+    --title="Scratch" \
+    -e bash -c "nvim +startinsert '$file'" >/dev/null 2>&1 &
+  sleep 0.3
+fi
+
+hyprctl eval "hl.dispatch(hl.dsp.workspace.toggle_special(\"$workspace\"))"

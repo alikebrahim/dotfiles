@@ -1,0 +1,50 @@
+#!/bin/bash
+# Regenerate vendored forks from fresh upstream + patches after omarchy update.
+# Omarchy replaces /usr/share/omarchy/* wholesale on update; these patches keep
+# the local forks in sync. No git here — only `patch` and `chezmoi add`
+# (source-file sync on disk; commits/review/propagation stay user-owned).
+
+set -uo pipefail
+
+PATCHES="$HOME/.config/omarchy/hooks/vendor"
+LOG="$HOME/.local/state/omarchy/vendor-patches.log"
+mkdir -p "$(dirname "$LOG")"
+
+say() { omarchy-notification-send -u "$1" "$2" "$3" >/dev/null 2>&1 || true; }
+
+apply() {
+  local name="$1" upstream="$2" target="$3" patchfile="$4"
+  local tmpdir base
+  tmpdir=$(mktemp -d)
+  base=$(basename "$upstream")
+
+  if ! cp "$upstream" "$tmpdir/$base" 2>/dev/null; then
+    rm -rf "$tmpdir"
+    say critical "Omarchy patch: $name" "missing upstream $upstream"
+    return 1
+  fi
+
+  # --fuzz=2 tolerates small upstream drift around the patch hunks.
+  if ( cd "$tmpdir" && patch -p1 --fuzz=2 -s --dry-run < "$patchfile" ) >>"$LOG" 2>&1; then
+    ( cd "$tmpdir" && patch -p1 --fuzz=2 -s < "$patchfile" ) >>"$LOG" 2>&1
+    mkdir -p "$(dirname "$target")"
+    cp "$tmpdir/$base" "$target"
+    chezmoi add "$target" >>"$LOG" 2>&1 || true
+    say normal "Omarchy patch: $name" "re-applied to fresh upstream"
+  else
+    say critical "Omarchy patch FAILED: $name" "kept previous version — see $LOG"
+  fi
+
+  rm -rf "$tmpdir"
+}
+
+# Menu plugin must first be cloned once: `omarchy plugin clone omarchy.menu`
+apply "menu ctrl+J/K" \
+  "/usr/share/omarchy/shell/plugins/menu/Menu.qml" \
+  "$HOME/.config/omarchy/plugins/axmi.menu/Menu.qml" \
+  "$PATCHES/menu-ctrl-jk.patch"
+
+apply "keybindings order" \
+  "/usr/share/omarchy/bin/omarchy-menu-keybindings" \
+  "$HOME/.local/bin/omarchy-menu-keybindings" \
+  "$PATCHES/keybindings-order.patch"

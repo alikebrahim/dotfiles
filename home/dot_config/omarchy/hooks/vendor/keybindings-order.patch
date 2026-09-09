@@ -1,0 +1,12 @@
+--- a/omarchy-menu-keybindings
++++ b/omarchy-menu-keybindings
+@@ -410,6 +410,9 @@
+     if (match(line, /Move window silently to workspace/))  prio = 31
+     if (match(line, /Swap window/))  prio = 32
+     if (match(line, /Focus/))  prio = 33
++    # vim keys (h/j/k/l) sort before arrow keys within the same action.
++    if (match(line, /Swap window/) && match(line, /SUPER SHIFT \+ [HJKL] +→/)) prio = 31
++    if (match(line, /Focus/) && match(line, /SUPER \+ [HJKL] +→/)) prio = 32
+     if (match(line, /Move window$/))  prio = 34
+     if (match(line, /Resize window/))  prio = 35
+     if (match(line, /Expand window/))  prio = 36

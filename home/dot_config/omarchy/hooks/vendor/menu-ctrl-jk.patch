@@ -1,0 +1,15 @@
+--- a/Menu.qml
++++ b/Menu.qml
+@@ -1097,6 +1097,12 @@
+           } else if (event.key === Qt.Key_Down) {
+             root.select(1)
+             event.accepted = true
++          } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_J) {
++            root.select(1)
++            event.accepted = true
++          } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_K) {
++            root.select(-1)
++            event.accepted = true
+           } else if (event.key === Qt.Key_PageUp) {
+             root.select(-6)
+             event.accepted = true
