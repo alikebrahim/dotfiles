@@ -1,3 +1,7 @@
+# Fleet model (2026-09-04): single controller identity hostmaster@netmaster.
+# Workstations are reached as their personal users; hostmaster exists ONLY here.
+# Git: git@netmaster via hostmaster_key (entry registered on the git server).
+
 Host netmaster
     HostName 100.75.210.33
     User git
@@ -6,46 +10,29 @@ Host netmaster
 
 Host servalws
     HostName servalws
-    User hostmaster
+    User alikebrahim
     IdentityFile ~/.ssh/hostmaster_key
     IdentitiesOnly yes
 
 Host macbook
     HostName macbook
-    User hostmaster
-    IdentityFile ~/.ssh/hostmaster_key
-
-Host zotac-box
-    HostName zotac-box
-    User hostmaster
+    User alikebrahim
     IdentityFile ~/.ssh/hostmaster_key
     IdentitiesOnly yes
 
 Host minisforoum
     HostName minisforoum
-    User hostmaster
-    IdentityFile ~/.ssh/hostmaster_key
-    IdentitiesOnly yes
-
-Host axmi-servalws
-    HostName servalws
     User alikebrahim
     IdentityFile ~/.ssh/hostmaster_key
     IdentitiesOnly yes
 
-Host axmi-macbook
-    HostName macbook
-    User alikebrahim
+Host thinkpad
+    HostName thinkpad
+    User axmi
     IdentityFile ~/.ssh/hostmaster_key
     IdentitiesOnly yes
 
-Host axmi-minisforoum
-    HostName minisforoum
-    User alikebrahim
-    IdentityFile ~/.ssh/hostmaster_key
-    IdentitiesOnly yes
-
-Host axmi-zotac-box
+Host zotac-box
     HostName zotac-box
     User alikebrahim
     IdentityFile ~/.ssh/hostmaster_key
@@ -67,6 +54,5 @@ Host honor
     HostName honor
     Port 8022
     User u0_a290
-    SetEnv LC_TMUX_DEVICE=honor
     IdentityFile ~/.ssh/hostmaster_key
     IdentitiesOnly yes

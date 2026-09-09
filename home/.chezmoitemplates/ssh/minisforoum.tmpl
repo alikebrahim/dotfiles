@@ -21,18 +21,22 @@ Host zotac-box
     IdentityFile ~/.ssh/primary_key
     # IdentityAgent ~/.1password/agent.sock
 
+Host thinkpad
+    HostName thinkpad
+    User axmi
+    IdentityFile ~/.ssh/primary_key
+    # IdentityAgent ~/.1password/agent.sock
+
 Host netmaster
     HostName netmaster
     User hostmaster
     IdentityFile ~/.ssh/primary_key
     # IdentityAgent ~/.1password/agent.sock
-    SetEnv LC_TMUX_DEVICE=minisforoum
 
 Host honor
     HostName honor
     Port 8022
     User u0_a290
-    SetEnv LC_TMUX_DEVICE=honor
 
 Host *
 	IdentityFile ~/.ssh/primary_key
