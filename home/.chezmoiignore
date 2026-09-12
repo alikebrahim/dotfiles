@@ -69,16 +69,20 @@
 {{- end }}
 
 {{/* ── thinkpad (Omarchy 4.0) ──
-     Omarchy owns ~/.config/hypr, ~/.config/omarchy and ~/.config/tmux on
-     its hosts; here we only take over the hyprland KEYBIND overrides file,
-     the shell.json idle overrides, and remove the Omarchy-seeded tmux XDG
-     config (personal tmux lives at ~/.tmux.conf). Omarchy also owns the
-     nvim theme pipeline, so the repo's kanagawa (theme) plugin spec is
-     skipped on thinkpad. */}}
+     Thinkpad-only overrides managed by the repo: the Hyprland keybinding
+     overrides (bindings.lua), the Omarchy customisations (menu clone +
+     vendor patches/hooks), the Omarchy-specific helper scripts, and the
+     merged tmux XDG config (~/.config/tmux/tmux.conf). The SHARED personal
+     tmux (~/.tmux.conf + ~/.tmux/theme tree) stays for the other hosts and
+     is NOT deployed on thinkpad. Omarchy also owns the nvim theme
+     pipeline, so the repo's kanagawa (theme) plugin spec is skipped on
+     thinkpad. */}}
 {{- if ne .chezmoi.hostname "thinkpad" }}
 .config/hypr
 .config/omarchy
 .config/tmux/tmux.conf
+.local/bin/omarchy-menu-keybindings
+.local/bin/scratch-term
 {{- end }}
 
 {{- if eq .chezmoi.hostname "thinkpad" }}
