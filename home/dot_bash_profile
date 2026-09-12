@@ -5,3 +5,14 @@ fi
 
 # Added by Antigravity CLI installer
 export PATH="/home/alikebrahim/.local/bin:$PATH"
+
+# SSH login: attach to the persistent "workspace" tmux session.
+# Same contract as the zsh block in ~/.zprofile (mutually exclusive guards):
+# interactive SSH logins land in workspace; NO_TMUX=1 skips; never nests.
+# Bash syntax: shopt login_shell + $- interactive + command -v (no zsh-isms).
+if shopt -q login_shell && [[ $- == *i* ]] && [[ -z "$TMUX" ]] && [[ -n "$SSH_TTY" ]] && [[ -z "$NO_TMUX" ]] && command -v tmux >/dev/null 2>&1; then
+  if ! tmux has-session -t '=workspace' 2>/dev/null; then
+    tmux new-session -d -s workspace -c "$HOME"
+  fi
+  exec tmux attach-session -t '=workspace'
+fi

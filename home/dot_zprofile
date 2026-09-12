@@ -16,6 +16,20 @@ if [[ -o login ]] && [[ -o interactive ]] && [[ -z "$TMUX" ]] && [[ -n "$PREFIX"
   tmux attach-session -t '=main' 2>/dev/null || true
 fi
 
+# SSH login: attach to the persistent "workspace" tmux session.
+# Server-side only (no client coupling): any interactive SSH login to this
+# host lands in the shared workspace session; it survives detach and future
+# logins. Escapes: NO_TMUX=1 skips; inside tmux never re-attaches; non-SSH
+# logins (local console/GUI) are unaffected. Termux phone-local auto-attach
+# to "main" is handled by its own block above (guards are mutually exclusive).
+if [[ -o login ]] && [[ -o interactive ]] && [[ -z "$TMUX" ]] && [[ -n "$SSH_TTY" ]] && [[ -z "$NO_TMUX" ]] && (( ${+commands[tmux]} )); then
+  # '=workspace' = exact match (plain 'workspace' would prefix-match)
+  if ! tmux has-session -t '=workspace' 2>/dev/null; then
+    tmux new-session -d -s workspace -c "$HOME"
+  fi
+  exec tmux attach-session -t '=workspace'
+fi
+
 # Secrets (API keys etc.): age-encrypted in the repo, decrypted to 0600 by
 # chezmoi on hosts that have one. Absent file is a silent no-op.
 [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/secrets.env" ] && . "${XDG_CONFIG_HOME:-$HOME/.config}/secrets.env"
