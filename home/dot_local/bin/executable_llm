@@ -2,7 +2,7 @@
 # llm — single-slot multi-profile llama-server manager (Serval WS / local LLM)
 #
 # One model resident at a time on a loopback port. Profiles are host-local YAML.
-# This command is stowed via my-bin; model paths stay under ~/ai-experiments/.
+# Managed by chezmoi (home/dot_local/bin); model paths stay under ~/ai-experiments/.
 #
 # Usage:
 #   llm list [--all]

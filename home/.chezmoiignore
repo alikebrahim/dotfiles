@@ -80,7 +80,7 @@
 {{- if ne .chezmoi.hostname "thinkpad" }}
 .config/hypr
 .config/omarchy
-.config/tmux/tmux.conf
+.config/tmux
 .local/bin/omarchy-menu-keybindings
 .local/bin/scratch-term
 {{- end }}

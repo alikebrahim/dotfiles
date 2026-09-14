@@ -1,3 +1,0 @@
-module style
-singleton Palette 1.0 Palette.qml
-singleton Metrics 1.0 Metrics.qml
