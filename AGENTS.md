@@ -50,7 +50,7 @@ This repo contains source-of-truth files for personal system configuration, mana
   updates source files on disk; commits, review, and propagation are
   user-owned.
 
-### my-bin / dot_local/bin boundaries
+### dot_local/bin boundaries
 
 - Managed scripts live in `home/dot_local/bin/` as `executable_*` entries (aiw, note, x11_connections_check, fix-nvidia-suspend.sh, ...).
 - `hermes` is not managed by this repo. Each host maintains its own `~/.local/bin/hermes` as a real file pointing to the host-local Hermes venv path.
@@ -124,7 +124,8 @@ One approval may cover a clearly described batch of related edits. It does not a
 ## User preferences learned for this repo
 
 - The user generally uses WezTerm multiplexing locally, not local tmux. Treat the old `tmux/` directory as reference unless the user explicitly revives it.
-- Remote machines use `tmux-remote` and SSH auto-attach to `ssh_tmux:system`.
+- Remote tmux config: XDG `~/.config/tmux/tmux.conf` on thinkpad; shared `~/.tmux.conf` on all other hosts. Per-host themes are rendered by `home/dot_tmux/theme.conf.tmpl` from `hostFacts.<host>.tmuxTheme` (the old `tmux-remote-*` overlay packages are deleted).
+- SSH logins auto-attach to the persistent `workspace` tmux session (server-side blocks in `dot_zprofile` + `dot_bash_profile`, shell-native guards; `NO_TMUX=1` skips).
 - Remote tmux should stay generic across machines; avoid hardcoded paths such as `/home/pi/...`.
 - Remote tmux/editor clipboard should use OSC52 through WezTerm, not `tmux-yank`, `xclip`, `wl-copy`, or remote GUI clipboard tools.
 - Remotes can be assumed modern: Ubuntu 22.04+ or Fedora 44, with Vim 9.1+.
