@@ -33,5 +33,29 @@ for entry in "${PLUGINS[@]}"; do
         git clone --quiet --depth=1 "$url" "$dest"
     fi
 done
+
+# tmux-fingers needs a compiled CLI. Upstream ships release binaries for
+# linux-x86_64 only (macos-arm64 aside); aarch64 hosts must build locally
+# (see ~/.local/opt/crystal setup, dotfiles skill). This step is idempotent:
+# an existing working binary is never touched.
+FINGERS_BIN="$PLUGINS_DIR/tmux-fingers/bin/tmux-fingers"
+FINGERS_VERSION="2.7.1"
+if [[ -x "$FINGERS_BIN" ]]; then
+    echo "CURRENT tmux-fingers binary (left unchanged)"
+elif [[ "$(uname -s)/$(uname -m)" == "Linux/x86_64" ]]; then
+    echo "FETCHING tmux-fingers $FINGERS_VERSION release binary"
+    mkdir -p "$PLUGINS_DIR/tmux-fingers/bin"
+    url="https://github.com/Morantron/tmux-fingers/releases/download/${FINGERS_VERSION}/tmux-fingers-${FINGERS_VERSION}-linux-x86_64"
+    curl -fsSL --retry 3 -o "$FINGERS_BIN" "$url"
+    chmod 755 "$FINGERS_BIN"
+    # No --version/--help in this CLI; bare execution proves the binary loads.
+    rc=0
+    "$FINGERS_BIN" </dev/null >/dev/null 2>&1 || rc=$?
+    if [[ $rc -ne 0 && $rc -ne 1 ]]; then
+        echo "WARN: fetched tmux-fingers binary did not execute cleanly (rc=$rc)" >&2
+    fi
+else
+    echo "NOTE: no prebuilt tmux-fingers binary for $(uname -m); local build required" >&2
+fi
 echo "Done: tmux plugins ensured in $PLUGINS_DIR"
 {{- end -}}
