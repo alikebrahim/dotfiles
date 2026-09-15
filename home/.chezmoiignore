@@ -69,7 +69,9 @@
 {{- end }}
 
 {{/* ── thinkpad (Omarchy 4.0) ──
-     Thinkpad-only overrides managed by the repo: the Hyprland keybinding
+     Thinkpad-only overrides managed by the repo: the ghostty terminal
+     config (font size + keybinds, absorbed after omarchy updates by the
+     sync-ghostty-config hook), the Hyprland keybinding
      overrides (bindings.lua), the Omarchy customisations (menu clone +
      vendor patches/hooks), the Omarchy-specific helper scripts, and the
      merged tmux XDG config (~/.config/tmux/tmux.conf). The SHARED personal
@@ -83,6 +85,15 @@
 .config/tmux
 .local/bin/omarchy-menu-keybindings
 .local/bin/scratch-term
+{{- end }}
+
+{{/* ── ghostty terminal ──
+     Deployed on hosts that run ghostty. The config is portable: the
+     omarchy theme line is optional ("?" prefix) and no-ops where the
+     omarchy state dir is absent. thinkpad's live copy keeps absorbing
+     omarchy-update edits via the sync-ghostty-config hook. */}}
+{{- if and (ne .chezmoi.hostname "thinkpad") (ne .chezmoi.hostname "servalws") }}
+.config/ghostty
 {{- end }}
 
 {{- if eq .chezmoi.hostname "thinkpad" }}
