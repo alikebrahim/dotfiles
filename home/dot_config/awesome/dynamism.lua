@@ -6,8 +6,8 @@ local dynamism = {}
 function dynamism.setup()
     -- Scratchpad: Mod + ` toggles a persistent dropdown editor.
     dynamism.term_scratch = bling.module.scratchpad {
-        command = [[sh -c 'dir="${XDG_RUNTIME_DIR:-$HOME/.cache/awesome}"; install -d -m 700 "$dir"; file="$(mktemp "$dir/scratch-XXXXXX")" || exit; exec wezterm start --class scratchpad -- nvim +startinsert "$file"']],
-        rule = { class = "scratchpad" },
+        command = [[sh -c 'dir="${XDG_RUNTIME_DIR:-$HOME/.cache/awesome}"; install -d -m 700 "$dir"; file="$(mktemp "$dir/scratch-XXXXXX")" || exit; exec ghostty --class=com.axminet.scratchpad -e nvim +startinsert "$file"']],
+        rule = { class = "com.axminet.scratchpad" },
         sticky = true,
         autoclose = true,
         floating = true,

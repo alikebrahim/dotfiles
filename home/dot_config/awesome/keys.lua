@@ -86,7 +86,7 @@ local function is_spatial_focus_client(c)
 
     local class = tostring(c.class or ""):lower()
     return c.type == "normal"
-        and class ~= "scratchpad"
+        and class ~= "com.axminet.scratchpad"
         and not c.minimized
         and c:isvisible()
 end

@@ -25,7 +25,7 @@ beautiful.init(require("theme"))
 -- -----------------------------------------------------------------------------
 -- Core settings
 -- -----------------------------------------------------------------------------
-terminal = "wezterm"
+terminal = "ghostty"
 browser = "google-chrome --new-window"
 editor = os.getenv("EDITOR") or "nano"
 modkey = "Mod4"
